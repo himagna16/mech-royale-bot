@@ -449,7 +449,11 @@ class Bot:
             mode = "slip"
         elif survive and tgt is None and t - self.threat_t >= 4.0:
             hx, hy = self.hide_spot(obs, me, t)
-            if math.hypot(hx - x, hy - y) > 5.0:
+            if want and want[4] < (110.0 if not armed else 45.0):
+                hx, hy = want[3][0], want[3][1]      # a laser is worth a short quiet walk even while hiding
+            elif cube and cube_d < 45.0:
+                hx, hy = cube[0], cube[1]
+            if math.hypot(hx - x, hy - y) > (5.0 if (hx, hy) == self.hide else 1.0):
                 mv = self.go(hx, hy, me, t)
                 quiet = st["walk_speed"] > 0 and 4.6 / st["walk_speed"]
                 mv = (mv[0] * quiet, mv[1] * quiet)       # under 5 m/s makes no footstep sound
