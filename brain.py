@@ -42,6 +42,8 @@ DODGE = _env("MR_DODGE", 1.0) > 0
 FFA_DEATHS = _env("MR_FFADEATHS", 4.0)    # deaths we did not cause before we believe it is a free-for-all
 FARM_HP = _env("MR_FARMHP", 0.5)
 FFA_EVIDENCE = _env("MR_FFAEVID", 1.0) > 0
+FFA_TWO = _env("MR_FFATWO", 0.0)           # two attackers before this time and before our first kill => free-for-all (0 = off)
+FFA_EARLY = _env("MR_FFAEARLY", 0.0)       # any mech damage before this time => free-for-all (0 = off)
 HUNT = _env("MR_HUNT", 0.0) > 0            # when idle and healthy, walk to where a mech was last seen
 PURSUE = _env("MR_PURSUE", 1.0) > 0
 CUBE_MEMORY = _env("MR_CUBEMEM", 40.0)
@@ -289,6 +291,13 @@ class Bot:
         other_deaths = self.deaths_seen - self.my_kills
         if other_deaths >= FFA_DEATHS or (other_deaths >= 2 and t < 45) or (other_deaths >= 3 and t < 90):
             self.ffa_latched = True      # others are dying without us: a free-for-all, not the practice squad
+        # the practice squad sends one hunter early; two different mechs hitting us before our first kill,
+        # or anyone hitting us in the first few seconds, has only been seen in free-for-alls
+        if not self.ffa_latched and self.my_kills == 0:
+            if FFA_TWO and len(self.hit_by) >= 2 and t < FFA_TWO:
+                self.ffa_latched = True
+            if FFA_EARLY and self.hit_by and min(self.hit_by.values()) < FFA_EARLY:
+                self.ffa_latched = True
         ffa = self.ffa_latched
         for p in obs["pickups"]:
             self.pick_memo[p["id"]] = (p["kind"], p["pos"])
