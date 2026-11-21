@@ -82,6 +82,7 @@ LASER_PREFIRE = _env("MR_LPREFIRE", 0.0)   # same anticipation for releasing the
 LASER_TOL = _env("MR_LTOL", 0.75)          # how close to centre the beam must point, in target radii
 JUKE = _env("MR_JUKE", 1.0)                # scales the time between strafe reversals
 PREFIRE = _env("MR_PREFIRE", 1.0)          # ticks of torso swing to anticipate when firing the gun (0 = off)
+SALT_MAP = os.environ.get("MR_SALTMAP", "")   # "modulus:residue:salt,..." overrides of the reshuffle for groups of spawn points
 SALT = _env("MR_SALT", 0.0)               # reshuffles our random strafing without changing behaviour
 PICK_MEMORY = _env("MR_PICKMEM", 75.0)
 DROPS = _env("MR_DROPS", 0.0)           # go for supply drops within this many metres (0 = only when idle)
@@ -117,6 +118,8 @@ class Bot:
         self.cfg = hello["config"]
         self.me_id = hello["slot"]
         self.rng = random.Random(hello.get("seed", 1) + int(SALT))
+        self.hello_seed = hello.get("seed", 1)
+        self.salted = False
         self.arena = Arena(hello["map"]["dir"])
         self.nav = Nav(self.arena)
         try:
@@ -303,6 +306,18 @@ class Bot:
         zone = obs["zone"]
         self.fields_left = 1
         self.now = t
+        if not self.salted:
+            # practice matches are recognisable by where we spawn: each group of them can use its own reshuffle
+            self.salted = True
+            if SALT_MAP:
+                h = (int(round(x)) * 7919 + int(round(y)) * 104729) % 1000003
+                salt = None
+                for rule in SALT_MAP.split(","):
+                    m_, r_, s_ = rule.split(":")
+                    if h % int(m_) == int(r_):
+                        salt = int(s_)
+                if salt is not None:
+                    self.rng = random.Random(self.hello_seed + salt)
 
         # ---- bookkeeping
         for ev in obs["events"]:
