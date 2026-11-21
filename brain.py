@@ -69,7 +69,7 @@ UNFLANK = _env("MR_UNFLANK", 0.0)           # weight of backing away from the gr
 ANTI_ZAP = _env("MR_ANTIZAP", 0.0)         # preferred distance from a mech carrying lightning when we have none (0 = off)
 LASER_COVER = _env("MR_LASERCOVER", 14.0)   # reach (m) to search for cover from a charged laser aimed at us (0 = off)
 HEAL_TO = _env("MR_HEALTO", 0.6)            # with nobody in sight, leave cover once health is back above this
-UPG_C = _env("MR_UPGC", 0.0) > 0            # damage-first upgrade order
+UPG_C = _env("MR_UPGC", 1.0) > 0            # damage-first upgrade order
 UPG_B = _env("MR_UPGB", 0.0) > 0            # alternative upgrade order (repair and speed earlier)
 DODGE_FIGHT = _env("MR_DODGEFIGHT", 0.0) > 0  # in a duel, pick the best of nine directions against incoming shots
 DODGE_ALL = _env("MR_DODGEALL", 1.5)       # weight of the sidestep added to non-duel movement (0 = off)
