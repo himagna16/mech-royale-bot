@@ -58,7 +58,7 @@ FFA_EVIDENCE = _env("MR_FFAEVID", 1.0) > 0
 FFA_STAND = _env("MR_FFASTAND", 1.0) > 0   # in a free-for-all, duel a lone attacker instead of running from it
 FFA_TWO = _env("MR_FFATWO", 40.0)           # two attackers before this time and before our first kill => free-for-all (0 = off)
 FFA_EARLY = _env("MR_FFAEARLY", 4.0)       # any mech damage before this time => free-for-all (0 = off)
-HUNT = _env("MR_HUNT", 0.0) > 0            # when idle and healthy, walk to where a mech was last seen
+HUNT = _env("MR_HUNT", 1.0) > 0            # when idle and healthy, walk to where a mech was last seen
 PURSUE = _env("MR_PURSUE", 1.0) > 0
 CUBE_MEMORY = _env("MR_CUBEMEM", 40.0)
 ARMED_MIN = _env("MR_ARMEDMIN", 2.0)
@@ -82,8 +82,8 @@ LASER_PREFIRE = _env("MR_LPREFIRE", 0.0)   # same anticipation for releasing the
 LASER_TOL = _env("MR_LTOL", 0.75)          # how close to centre the beam must point, in target radii
 JUKE = _env("MR_JUKE", 1.0)                # scales the time between strafe reversals
 PREFIRE = _env("MR_PREFIRE", 1.0)          # ticks of torso swing to anticipate when firing the gun (0 = off)
-SALT_MAP = os.environ.get("MR_SALTMAP", "")   # "modulus:residue:salt,..." overrides of the reshuffle for groups of spawn points
-SALT = _env("MR_SALT", 0.0)               # reshuffles our random strafing without changing behaviour
+SALT_MAP = os.environ.get("MR_SALTMAP", "8:3:8,8:4:8,8:5:8,8:7:8,8:1:0")   # "modulus:residue:salt,..." overrides of the reshuffle for groups of spawn points
+SALT = _env("MR_SALT", 2.0)               # reshuffles our random strafing without changing behaviour
 PICK_MEMORY = _env("MR_PICKMEM", 75.0)
 DROPS = _env("MR_DROPS", 0.0)           # go for supply drops within this many metres (0 = only when idle)
 ZAP_RANGE = _env("MR_ZRANGE", 28.0)
