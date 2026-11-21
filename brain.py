@@ -37,7 +37,7 @@ ZONE_MARGIN = 18.0
 FARM = _env("MR_FARM", 2.0)
 SWAP_GUN = _env("MR_SWAPGUN", 0.0) > 0     # replace the starting gun once we can carry laser + lightning
 LASER_RANGE = _env("MR_LRANGE", 110.0)
-ANGLE = _env("MR_ANGLE", 0.0) > 0
+ANGLE = _env("MR_ANGLE", 1.0) > 0
 ROAM = _env("MR_ROAM", 1.0) > 0
 BUNKER = _env("MR_BUNKER", 0.0) > 0        # hold a tucked-away spot and make hunters come to us
 BUNKER_LEASH = _env("MR_LEASH", 16.0)
@@ -56,7 +56,7 @@ PURSUE = _env("MR_PURSUE", 1.0) > 0
 CUBE_MEMORY = _env("MR_CUBEMEM", 40.0)
 ARMED_MIN = _env("MR_ARMEDMIN", 2.0)
 ANTI_ZAP = _env("MR_ANTIZAP", 0.0)         # preferred distance from a mech carrying lightning when we have none (0 = off)
-LASER_COVER = _env("MR_LASERCOVER", 0.0)   # reach (m) to search for cover from a charged laser aimed at us (0 = off)
+LASER_COVER = _env("MR_LASERCOVER", 14.0)   # reach (m) to search for cover from a charged laser aimed at us (0 = off)
 HEAL_TO = _env("MR_HEALTO", 0.6)            # with nobody in sight, leave cover once health is back above this
 UPG_B = _env("MR_UPGB", 0.0) > 0            # alternative upgrade order (repair and speed earlier)
 DODGE_FIGHT = _env("MR_DODGEFIGHT", 0.0) > 0  # in a duel, pick the best of nine directions against incoming shots
