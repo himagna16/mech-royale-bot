@@ -58,7 +58,7 @@ FFA_EVIDENCE = _env("MR_FFAEVID", 1.0) > 0
 FFA_STAND = _env("MR_FFASTAND", 1.0) > 0   # in a free-for-all, duel a lone attacker instead of running from it
 FFA_TWO = _env("MR_FFATWO", 40.0)           # two attackers before this time and before our first kill => free-for-all (0 = off)
 FFA_EARLY = _env("MR_FFAEARLY", 4.0)       # any mech damage before this time => free-for-all (0 = off)
-HUNT = _env("MR_HUNT", 0.0) > 0            # when idle and healthy, walk to where a mech was last seen
+HUNT = _env("MR_HUNT", 1.0) > 0            # when idle and healthy, walk to where a mech was last seen
 PURSUE = _env("MR_PURSUE", 1.0) > 0
 CUBE_MEMORY = _env("MR_CUBEMEM", 40.0)
 ARMED_MIN = _env("MR_ARMEDMIN", 2.0)
@@ -69,10 +69,10 @@ UNFLANK = _env("MR_UNFLANK", 0.0)           # weight of backing away from the gr
 ANTI_ZAP = _env("MR_ANTIZAP", 0.0)         # preferred distance from a mech carrying lightning when we have none (0 = off)
 LASER_COVER = _env("MR_LASERCOVER", 14.0)   # reach (m) to search for cover from a charged laser aimed at us (0 = off)
 HEAL_TO = _env("MR_HEALTO", 0.6)            # with nobody in sight, leave cover once health is back above this
-TGT_HPW = _env("MR_TGTHPW", 60.0)           # how strongly target choice favours the weakest mech
-FINISH_FRAC = _env("MR_FINISHFRAC", 0.2)    # an enemy below this health is worth finishing instead of retreating...
-FINISH_MYHP = _env("MR_FINISHMYHP", 0.2)    # ...while we are above this health...
-FINISH_MAXN = _env("MR_FINISHMAXN", 2.0)    # ...and no more than this many attackers are in view
+TGT_HPW = _env("MR_TGTHPW", 140.0)           # how strongly target choice favours the weakest mech
+FINISH_FRAC = _env("MR_FINISHFRAC", 0.35)    # an enemy below this health is worth finishing instead of retreating...
+FINISH_MYHP = _env("MR_FINISHMYHP", 0.08)    # ...while we are above this health...
+FINISH_MAXN = _env("MR_FINISHMAXN", 9.0)    # ...and no more than this many attackers are in view
 UPG_C = _env("MR_UPGC", 0.0) > 0            # damage-first upgrade order
 UPG_B = _env("MR_UPGB", 0.0) > 0            # alternative upgrade order (repair and speed earlier)
 DODGE_FIGHT = _env("MR_DODGEFIGHT", 0.0) > 0  # in a duel, pick the best of nine directions against incoming shots
