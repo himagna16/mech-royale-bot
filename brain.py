@@ -32,6 +32,9 @@ FARM = _env("MR_FARM", 2.0)
 if os.environ.get("MR_WTOP") == "lightning":
     WEAPON_RANK = {"lightning": 3, "laser": 2, "mortar": 1, "gun": 0}
 LASER_RANGE = _env("MR_LRANGE", 115.0)
+ANGLE = _env("MR_ANGLE", 1.0) > 0
+ROAM = _env("MR_ROAM", 1.0) > 0
+GRAB = _env("MR_GRAB", 70.0)
 ZAP_RANGE = _env("MR_ZRANGE", 36.0)
 
 
@@ -89,6 +92,7 @@ class Bot:
         self.cube_memo = {}      # cube id -> pos
         self.farm_memo = {}      # crate / drone id -> (pos, height)
         self.rear_t, self.rear_bearing, self.rear_by = -100.0, 0.0, None
+        self.angle_pt, self.angle_t = None, -100.0
         self.my_kills = 0
         self.deaths_seen = 0
         self.last_alive = None
@@ -327,9 +331,18 @@ class Bot:
                 ghost = {"pos": [x + 80 * math.cos(b), y + 80 * math.sin(b), z], "los": True, "d": 80.0}
                 mv = self.retreat_dir(obs, me, visible + [ghost], t)
                 mode = "unflank"
+            elif ANGLE and len(visible) >= 2:
+                mv = self.angle_dir(me, tgt, visible, t)
+                mode = "angle"
+                if mv is None:
+                    mv = self.duel_move(me, tgt, t, ffa)
+                    mode = "fight"
             else:
                 mv = self.duel_move(me, tgt, t, ffa)
                 mode = "fight"
+            if GRAB and held[1] is None and want and want[4] < GRAB and tgt["d"] > 45 and mode in ("fight", "angle"):
+                mv = self.go(want[3][0], want[3][1], me, t)   # keep shooting, but walk onto the weapon
+                mode = "grab"
         elif t - self.threat_t < 3.0 and self.threat_bearing is not None and not enemies:
             # being shot by something we cannot see: do not stand there. Break its line of fire.
             b = self.threat_bearing
@@ -379,7 +392,10 @@ class Bot:
                 if best is not None and (best[0] > 70 or not self.arena.los((x, y, z + 7.0), (best[1][0], best[1][1], best[1][2] + 1.5))):
                     mv = self.go(best[1][0], best[1][1], me, t)
                     mode = "farm"
-        if final and not must_move and mode in ("idle", "stalk", "zone"):
+        if mode == "idle" and not ffa and ROAM and dz_next > zone["next_radius"] * 0.45 and hp_frac > 0.6:
+            mv = self.zone_dir(obs, me)
+            mode = "roam"
+        if final and not must_move and mode in ("idle", "stalk", "zone", "roam"):
             mv = self.go(zc[0], zc[1], me, t) if dz_next > 2.0 else (0.0, 0.0)
 
         # ---- stuck recovery
@@ -411,7 +427,7 @@ class Bot:
         else:
             farm = None
             under_fire = t - self.threat_t < 3.0 and self.threat_bearing is not None
-            if not under_fire and not survive and (not enemies or mode in ("idle", "cube", "loot", "zone", "farm")):
+            if not under_fire and not survive and (not enemies or mode in ("idle", "cube", "loot", "zone", "farm", "roam")):
                 cands = []
                 if FARM and hp_frac >= 0.97:   # dealing damage resets the 5 s regen timer: heal first, farm after
                     cands = [(math.dist(n["pos"], me["pos"]), n, 3.5) for n in npcs]
@@ -478,6 +494,36 @@ class Bot:
                     self.strafe = s
                 return mv
         return (ux * radial, uy * radial)
+
+    def angle_dir(self, me, tgt, visible, t):
+        """Several enemies can see us: find a nearby spot where only the target has a line on us."""
+        x, y, z = me["pos"]
+        others = [(e["pos"][0], e["pos"][1], e["pos"][2] + 8.0) for e in visible if e is not tgt][:3]
+        teye = (tgt["pos"][0], tgt["pos"][1], tgt["pos"][2] + 8.0)
+        if t - self.angle_t < 0.4 and self.angle_pt is not None:
+            best = self.angle_pt
+        else:
+            best = None
+            for r in (0.0, 10.0, 20.0, 34.0):
+                for k in range(12 if r else 1):
+                    a = k * TAU / 12
+                    px, py = x + r * math.cos(a), y + r * math.sin(a)
+                    g = self.arena.ground_at(px, py)
+                    if self.arena.blocked(px, py, g):
+                        continue
+                    c = (px, py, g + 5.0)
+                    seen = sum(1 for o in others if self.arena.los(o, c))
+                    tsee = self.arena.los(teye, c)
+                    cost = seen * 100 + (0 if tsee else 45) + r * 0.6
+                    if best is None or cost < best[0]:
+                        best = (cost, px, py, seen)
+            self.angle_pt, self.angle_t = best, t
+        if best is None or best[3] >= len(others):
+            return None      # no cover nearby: fight in the open as usual
+        d = math.hypot(best[1] - x, best[2] - y)
+        if d < 2.5:
+            return (0.0, 0.0)
+        return ((best[1] - x) / d, (best[2] - y) / d) if d < 12 else self.go(best[1], best[2], me, t)
 
     def retreat_dir(self, obs, me, enemies, t):
         """Head for the nearest spot no known enemy can see, inside the next circle if possible."""
