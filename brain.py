@@ -55,6 +55,7 @@ HUNT = _env("MR_HUNT", 0.0) > 0            # when idle and healthy, walk to wher
 PURSUE = _env("MR_PURSUE", 1.0) > 0
 CUBE_MEMORY = _env("MR_CUBEMEM", 40.0)
 ARMED_MIN = _env("MR_ARMEDMIN", 2.0)
+CUBE_REACH = _env("MR_CUBEREACH", 150.0)    # how far to walk for a remembered cube when nobody is in sight
 ZAP_CLOSE = _env("MR_ZAPCLOSE", 1.0) > 0    # close to arc range when holding lightning (0 = keep the other weapon's range)
 UNFLANK = _env("MR_UNFLANK", 0.0)           # weight of backing away from the group when hit in the back mid-duel (0 = off)
 ANTI_ZAP = _env("MR_ANTIZAP", 0.0)         # preferred distance from a mech carrying lightning when we have none (0 = off)
@@ -549,7 +550,7 @@ class Bot:
                 mode = "loot"
                 # sprint for the first real weapon: everything else in the match goes better with one
                 boost = RUSH and not armed and me["energy"] > 25 and want[4] > 15
-            elif cube and cube_d < 150:
+            elif cube and cube_d < CUBE_REACH:
                 mv = self.go(cube[0], cube[1], me, t)
                 mode = "cube"
             elif drop and hp_frac > 0.4 and not ffa and math.hypot(drop["pos"][0] - x, drop["pos"][1] - y) < 220:
