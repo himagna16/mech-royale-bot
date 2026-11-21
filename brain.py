@@ -550,6 +550,10 @@ class Bot:
                     mv = self.retreat_dir(obs, me, [ghost] + list(visible), t)
                     boost = me["energy"] > 20
                     mode = "evade"
+                elif FFA_FIX and survive:
+                    # it broke contact: use the pause to get out of the open instead of standing where it last saw us
+                    mv = self.retreat_dir(obs, me, enemies, t)
+                    mode = "slip"
             else:
                 mv, boost = self.duel_move(obs, me, tgt, t)
                 mode = "fight"
