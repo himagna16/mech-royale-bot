@@ -69,6 +69,10 @@ UNFLANK = _env("MR_UNFLANK", 0.0)           # weight of backing away from the gr
 ANTI_ZAP = _env("MR_ANTIZAP", 0.0)         # preferred distance from a mech carrying lightning when we have none (0 = off)
 LASER_COVER = _env("MR_LASERCOVER", 14.0)   # reach (m) to search for cover from a charged laser aimed at us (0 = off)
 HEAL_TO = _env("MR_HEALTO", 0.6)            # with nobody in sight, leave cover once health is back above this
+TGT_HPW = _env("MR_TGTHPW", 60.0)           # how strongly target choice favours the weakest mech
+FINISH_FRAC = _env("MR_FINISHFRAC", 0.2)    # an enemy below this health is worth finishing instead of retreating...
+FINISH_MYHP = _env("MR_FINISHMYHP", 0.2)    # ...while we are above this health...
+FINISH_MAXN = _env("MR_FINISHMAXN", 2.0)    # ...and no more than this many attackers are in view
 UPG_C = _env("MR_UPGC", 0.0) > 0            # damage-first upgrade order
 UPG_B = _env("MR_UPGB", 0.0) > 0            # alternative upgrade order (repair and speed earlier)
 DODGE_FIGHT = _env("MR_DODGEFIGHT", 0.0) > 0  # in a duel, pick the best of nine directions against incoming shots
@@ -445,7 +449,7 @@ class Bot:
         # ---- choose a target: stay on the same mech, answer whoever is hitting us, prefer weak and near
         tgt, best = None, None
         for e in enemies:
-            sc = e["d"] + 60.0 * e.get("hp", 1400) / max(e.get("max_hp", 1400), 1) + (0.0 if e["los"] else 45.0)
+            sc = e["d"] + TGT_HPW * e.get("hp", 1400) / max(e.get("max_hp", 1400), 1) + (0.0 if e["los"] else 45.0)
             if t - self.hit_by.get(e["id"], -100.0) < 3.0:
                 sc -= 45.0
             if e["id"] == self.tgt_id:
@@ -457,7 +461,7 @@ class Bot:
         tfrac = tgt.get("hp", 1400) / max(tgt.get("max_hp", 1400), 1) if tgt is not None else 1.0
         losing = (hp_frac < RETREAT_HP and (tgt is None or tfrac > hp_frac + 0.1)) or (n_threat >= 2 and hp_frac < 0.5) \
             or (n_threat >= BREAK_N and hp_frac < 0.75)
-        finishing = tgt is not None and tgt["los"] and tfrac < 0.2 and hp_frac > 0.2 and n_threat <= 2
+        finishing = tgt is not None and tgt["los"] and tfrac < FINISH_FRAC and hp_frac > FINISH_MYHP and n_threat <= FINISH_MAXN
         if finishing:
             self.retreating = False      # never walk away from a kill
         elif losing:
