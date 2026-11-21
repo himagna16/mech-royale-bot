@@ -29,14 +29,16 @@ RETREAT_HP = _env("MR_RETREAT", 0.38)     # break contact below this health frac
 REJOIN_HP = _env("MR_REJOIN", 0.85)       # ... and come back above this one
 ZONE_MARGIN = 18.0
 FARM = _env("MR_FARM", 2.0)
-SWAP_GUN = _env("MR_SWAPGUN", 0.0) > 0     # replace the starting gun once we can carry laser + lightning
+SWAP_GUN = _env("MR_SWAPGUN", 1.0) > 0     # replace the starting gun once we can carry laser + lightning
 LASER_RANGE = _env("MR_LRANGE", 115.0)
 ANGLE = _env("MR_ANGLE", 1.0) > 0
 ROAM = _env("MR_ROAM", 1.0) > 0
-BUNKER = _env("MR_BUNKER", 1.0) > 0        # hold a tucked-away spot and make hunters come to us
+BUNKER = _env("MR_BUNKER", 0.0) > 0        # hold a tucked-away spot and make hunters come to us
 BUNKER_LEASH = _env("MR_LEASH", 16.0)
 GRAB = _env("MR_GRAB", 70.0)
 ZAP_RANGE = _env("MR_ZRANGE", 36.0)
+LATENCY = _env("MR_LAT", 0.1)
+ACCEL_LEAD = _env("MR_ALEAD", 0.5)
 
 
 def wrap(a):
@@ -96,6 +98,8 @@ class Bot:
         self.angle_pt, self.angle_t = None, -100.0
         self.zapping = False
         self.ffa_latched = False
+        self.prev_vel = {}       # mech id -> (t, velocity) from the previous observation
+        self.now = 0.0
         self.my_kills = 0
         self.deaths_seen = 0
         self.last_alive = None
@@ -176,21 +180,59 @@ class Bot:
 
     # ------------------------------------------------------------------ aiming
     def aim_at(self, me, tgt, speed=None, height=None):
-        """(yaw, pitch, distance, lead point) to hit tgt; speed None = hitscan."""
+        """(yaw, pitch, distance, lead point) to hit tgt; speed None = hitscan.
+
+        The shot leaves about LATENCY seconds after this observation (the action applies on the next
+        ticks), so both we and the target are advanced by that much before solving the intercept."""
         x, y, z = me["pos"]
+        mvx, mvy = me["vel"][0], me["vel"][1]
+        x, y = x + mvx * LATENCY, y + mvy * LATENCY
         mz = z + me["stats"].get("muzzle_height", 7.0)
         h = height if height is not None else tgt.get("h", 9.0 * (1 + 0.05 * tgt.get("cubes", 0)))
-        tx, ty, tz = tgt["pos"][0], tgt["pos"][1], tgt["pos"][2] + h * tgt.get("frac", 0.5)
         vx, vy, vz = tgt.get("vel", (0, 0, 0))
+        vz_use = vz if abs(vz) > 0.5 else 0.0   # a grounded target does not sink: ignore tiny vertical speed
+        tx = tgt["pos"][0] + vx * LATENCY
+        ty = tgt["pos"][1] + vy * LATENCY
+        tz = tgt["pos"][2] + h * tgt.get("frac", 0.5) + vz_use * LATENCY
         if speed:
-            # the target cannot fall through the floor: ignore vertical speed unless it is airborne and rising
-            vz_use = vz if abs(vz) > 0.5 else 0.0
-            tt = intercept(tx - x, ty - y, tz - mz, vx - 0.0, vy - 0.0, vz_use, speed)
+            tt = intercept(tx - x, ty - y, tz - mz, vx, vy, vz_use, speed)
             if tt is not None:
                 tt = min(tt, 1.2)
-                tx, ty, tz = tx + vx * tt, ty + vy * tt, tz + vz_use * tt
+                ddx, ddy = self.drift(tgt, tt)
+                # one refinement: flight time to where the target will actually be
+                tt = min(1.2, math.sqrt((tx + ddx - x) ** 2 + (ty + ddy - y) ** 2 + (tz - mz) ** 2) / speed)
+                ddx, ddy = self.drift(tgt, tt)
+                tx, ty, tz = tx + ddx, ty + ddy, tz + vz_use * tt
         hd = math.hypot(tx - x, ty - y)
         return math.atan2(ty - y, tx - x), math.atan2(tz - mz, max(hd, 0.1)), math.hypot(hd, tz - mz), (tx, ty, tz)
+
+    def drift(self, tgt, horizon):
+        """Where a target ends up after `horizon` seconds, relative to now.
+
+        Dodging bots keep accelerating toward a new velocity, so plain velocity x time overshoots.
+        Checked against the recorded real match: half the observed acceleration, speed capped, hits more."""
+        vx, vy = tgt.get("vel", (0, 0, 0))[:2]
+        prev = self.prev_vel.get(tgt.get("id"))
+        ax = ay = 0.0
+        if ACCEL_LEAD and prev is not None and 0.0 < self.now - prev[0] <= 0.11:
+            dt = self.now - prev[0]
+            ax, ay = (vx - prev[1][0]) / dt * ACCEL_LEAD, (vy - prev[1][1]) / dt * ACCEL_LEAD
+        if ax == 0.0 and ay == 0.0:
+            return vx * horizon, vy * horizon
+        cap = max(11.7, math.hypot(vx, vy))
+        x = y = 0.0
+        left = horizon
+        while left > 1e-6:
+            h = 0.05 if left > 0.05 else left
+            vx += ax * h
+            vy += ay * h
+            sp = math.hypot(vx, vy)
+            if sp > cap:
+                vx, vy = vx * cap / sp, vy * cap / sp
+            x += vx * h
+            y += vy * h
+            left -= h
+        return x, y
 
     # ------------------------------------------------------------------ main
     def act(self, obs):
@@ -202,6 +244,7 @@ class Bot:
         hp_frac = me["hp"] / max(me["max_hp"], 1)
         zone = obs["zone"]
         self.fields_left = 1
+        self.now = t
 
         # ---- bookkeeping
         for ev in obs["events"]:
@@ -475,6 +518,7 @@ class Bot:
         if aim is not None:
             act["aim"] = [float(aim[0]), float(aim[1])]
         act["fire"] = [bool(fire[0]), bool(fire[1])]
+        self.prev_vel = {m["id"]: (t, m["vel"]) for m in obs["mechs"]}
         return act
 
     # ------------------------------------------------------------------ behaviours
