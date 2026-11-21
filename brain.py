@@ -399,7 +399,7 @@ class Bot:
                 if math.hypot(bx - x, by - y) > BUNKER_LEASH:
                     mv = self.go(bx, by, me, t)       # shoot on the way back to the pocket
                     mode = "hold"
-            if GRAB and min(ranks) <= 0 and want and want[4] < GRAB and tgt["d"] > 45 and mode in ("fight", "angle", "hold"):
+            if GRAB and max(ranks) <= 0 and want and want[4] < GRAB and tgt["d"] > 45 and mode in ("fight", "angle", "hold"):
                 mv = self.go(want[3][0], want[3][1], me, t)   # keep shooting, but walk onto the weapon
                 mode = "grab"
         elif t - self.threat_t < 3.0 and self.threat_bearing is not None and not enemies:
