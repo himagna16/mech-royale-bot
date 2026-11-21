@@ -9,11 +9,11 @@ from geom import Arena
 from nav import Nav
 
 TAU = 2 * math.pi
-WEAPON_RANK = {"laser": 3, "lightning": 2, "mortar": 1, "gun": 0}
+WEAPON_RANK = {"laser": 3, "lightning": 3, "mortar": 1, "gun": 0}
 UPGRADE_ORDER = [
-    "plating", "armor", "nanites", "laser_damage", "gun_damage", "servos", "gun_mag", "laser_charge",
-    "gun_velocity", "lightning_efficiency", "lightning_range", "lightning_chain", "laser_pierce",
-    "jets", "capacitor", "reactor", "gyros", "sensors", "gun_rate", "mortar_reload", "mortar_splash", "mortar_velocity",
+    "plating", "armor", "nanites", "lightning_efficiency", "laser_damage", "laser_charge", "reactor", "capacitor",
+    "lightning_chain", "lightning_range", "gun_damage", "servos", "gun_mag", "gun_velocity", "laser_pierce",
+    "jets", "gyros", "sensors", "gun_rate", "mortar_reload", "mortar_splash", "mortar_velocity",
 ]
 
 # tunables (the MR_* environment overrides exist only for local experiments)
@@ -29,11 +29,12 @@ RETREAT_HP = _env("MR_RETREAT", 0.38)     # break contact below this health frac
 REJOIN_HP = _env("MR_REJOIN", 0.85)       # ... and come back above this one
 ZONE_MARGIN = 18.0
 FARM = _env("MR_FARM", 2.0)
-if os.environ.get("MR_WTOP") == "lightning":
-    WEAPON_RANK = {"lightning": 3, "laser": 2, "mortar": 1, "gun": 0}
+SWAP_GUN = _env("MR_SWAPGUN", 1.0) > 0     # replace the starting gun once we can carry laser + lightning
 LASER_RANGE = _env("MR_LRANGE", 115.0)
 ANGLE = _env("MR_ANGLE", 1.0) > 0
 ROAM = _env("MR_ROAM", 1.0) > 0
+BUNKER = _env("MR_BUNKER", 0.0) > 0        # hold a tucked-away spot and make hunters come to us
+BUNKER_LEASH = _env("MR_LEASH", 16.0)
 GRAB = _env("MR_GRAB", 70.0)
 ZAP_RANGE = _env("MR_ZRANGE", 36.0)
 
@@ -93,6 +94,8 @@ class Bot:
         self.farm_memo = {}      # crate / drone id -> (pos, height)
         self.rear_t, self.rear_bearing, self.rear_by = -100.0, 0.0, None
         self.angle_pt, self.angle_t = None, -100.0
+        self.zapping = False
+        self.ffa_latched = False
         self.my_kills = 0
         self.deaths_seen = 0
         self.last_alive = None
@@ -176,7 +179,7 @@ class Bot:
         """(yaw, pitch, distance, lead point) to hit tgt; speed None = hitscan."""
         x, y, z = me["pos"]
         mz = z + me["stats"].get("muzzle_height", 7.0)
-        h = height if height is not None else 9.0 * (1 + 0.05 * tgt.get("cubes", 0))
+        h = height if height is not None else tgt.get("h", 9.0 * (1 + 0.05 * tgt.get("cubes", 0)))
         tx, ty, tz = tgt["pos"][0], tgt["pos"][1], tgt["pos"][2] + h * tgt.get("frac", 0.5)
         vx, vy, vz = tgt.get("vel", (0, 0, 0))
         if speed:
@@ -211,7 +214,10 @@ class Bot:
         if self.last_alive is not None and obs["alive"] < self.last_alive:
             self.deaths_seen += self.last_alive - obs["alive"]
         self.last_alive = obs["alive"]
-        ffa = self.deaths_seen - self.my_kills >= 3   # others are dying without us: a free-for-all, not the squad
+        other_deaths = self.deaths_seen - self.my_kills
+        if other_deaths >= (1 if t < 75 else 2 if t < 160 else 3):
+            self.ffa_latched = True      # others are dying without us: a free-for-all, not the practice squad
+        ffa = self.ffa_latched
         for p in obs["pickups"]:
             self.pick_memo[p["id"]] = (p["kind"], p["pos"])
         for c in obs["crates"]:
@@ -260,10 +266,14 @@ class Bot:
         # ---- weapons on the ground
         slots = me["weapons"]
         held = [w["kind"] if w else None for w in slots]
-        second_rank = WEAPON_RANK.get(held[1], -1) if len(held) > 1 else -1
+        ranks = [WEAPON_RANK.get(k, 0) if k else -1 for k in held]
+        low_slot = 0 if ranks[0] <= ranks[1] else 1          # the slot a new weapon would go into
+        low_rank = ranks[low_slot]
+        if not SWAP_GUN and held[0] == "gun" and held[1] is not None:
+            low_slot, low_rank = 1, ranks[1]
         want = None
         for pid, (kind, pos) in self.pick_memo.items():
-            if kind in held or WEAPON_RANK.get(kind, 0) <= second_rank:
+            if kind in held or WEAPON_RANK.get(kind, 0) <= low_rank:
                 continue
             d = math.hypot(pos[0] - x, pos[1] - y)
             score = d - 25 * WEAPON_RANK[kind]
@@ -273,8 +283,8 @@ class Bot:
                 want = (score, pid, kind, pos, d)
         if want and want[4] < 3.6 and abs(want[3][2] - z) < 4:
             act["take"] = want[1]
-            if held[1] is not None:
-                act["drop"] = 1
+            if held[low_slot] is not None:
+                act["drop"] = low_slot
 
         # ---- zone pressure
         zc = zone["next_center"]
@@ -340,7 +350,12 @@ class Bot:
             else:
                 mv = self.duel_move(me, tgt, t, ffa)
                 mode = "fight"
-            if GRAB and held[1] is None and want and want[4] < GRAB and tgt["d"] > 45 and mode in ("fight", "angle"):
+            if BUNKER and not ffa and mode == "fight" and tgt["d"] > 40:
+                bx, by = self.hide_spot(obs, me, t)
+                if math.hypot(bx - x, by - y) > BUNKER_LEASH:
+                    mv = self.go(bx, by, me, t)       # shoot on the way back to the pocket
+                    mode = "hold"
+            if GRAB and min(ranks) <= 0 and want and want[4] < GRAB and tgt["d"] > 45 and mode in ("fight", "angle", "hold"):
                 mv = self.go(want[3][0], want[3][1], me, t)   # keep shooting, but walk onto the weapon
                 mode = "grab"
         elif t - self.threat_t < 3.0 and self.threat_bearing is not None and not enemies:
@@ -366,10 +381,11 @@ class Bot:
                      if abs(cp[2] - self.arena.ground_at(cp[0], cp[1])) < 2.5 and math.hypot(cp[0] - zc[0], cp[1] - zc[1]) < zone["radius"] + 40]
             cube = min(cubes, key=lambda c: math.dist(c["pos"][:2], (x, y)), default=None)
             drop = next((d for d in obs["drops"] if d["lands_in"] < 12 and math.hypot(d["pos"][0] - zc[0], d["pos"][1] - zc[1]) < zone["next_radius"]), None)
-            if cube and math.dist(cube["pos"][:2], (x, y)) < 170:
+            bunker = BUNKER and not ffa
+            if cube and math.dist(cube["pos"][:2], (x, y)) < (90 if bunker else 170):
                 mv = self.go(cube["pos"][0], cube["pos"][1], me, t)
                 mode = "cube"
-            elif want and want[4] < 230 and hp_frac > 0.4:
+            elif want and want[4] < (140 if bunker and min(ranks) > 0 else 230) and hp_frac > 0.4:
                 mv = self.go(want[3][0], want[3][1], me, t)
                 mode = "loot"
             elif drop and hp_frac > 0.5 and not ffa and math.hypot(drop["pos"][0] - x, drop["pos"][1] - y) < 220:
@@ -378,6 +394,11 @@ class Bot:
             elif outside_next or final:
                 mv = self.zone_dir(obs, me)
                 mode = "zone"
+            elif bunker:
+                bx, by = self.hide_spot(obs, me, t)
+                if math.hypot(bx - x, by - y) > 4.0:
+                    mv = self.go(bx, by, me, t)
+                mode = "bunker"
             elif FARM >= 2 and hp_frac >= 0.9 and not ffa and self.farm_memo:
                 # walk toward the nearest remembered crate or drone that is on the ground inside the next circle
                 best = None
@@ -392,10 +413,10 @@ class Bot:
                 if best is not None and (best[0] > 70 or not self.arena.los((x, y, z + 7.0), (best[1][0], best[1][1], best[1][2] + 1.5))):
                     mv = self.go(best[1][0], best[1][1], me, t)
                     mode = "farm"
-        if mode == "idle" and not ffa and ROAM and dz_next > zone["next_radius"] * 0.45 and hp_frac > 0.6:
+        if mode == "idle" and not ffa and ROAM and not BUNKER and dz_next > zone["next_radius"] * 0.45 and hp_frac > 0.6:
             mv = self.zone_dir(obs, me)
             mode = "roam"
-        if final and not must_move and mode in ("idle", "stalk", "zone", "roam"):
+        if final and not must_move and mode in ("idle", "stalk", "zone", "roam", "bunker"):
             mv = self.go(zc[0], zc[1], me, t) if dz_next > 2.0 else (0.0, 0.0)
 
         # ---- stuck recovery
@@ -427,7 +448,7 @@ class Bot:
         else:
             farm = None
             under_fire = t - self.threat_t < 3.0 and self.threat_bearing is not None
-            if not under_fire and not survive and (not enemies or mode in ("idle", "cube", "loot", "zone", "farm", "roam")):
+            if not under_fire and not survive and (not enemies or mode in ("idle", "cube", "loot", "zone", "farm", "roam", "bunker")):
                 cands = []
                 if FARM and hp_frac >= 0.97:   # dealing damage resets the 5 s regen timer: heal first, farm after
                     cands = [(math.dist(n["pos"], me["pos"]), n, 3.5) for n in npcs]
@@ -437,16 +458,8 @@ class Bot:
                     farm = min(cands, key=lambda c: c[0])
             if farm is not None:
                 d, obj, h = farm
-                gun = next((w for w in slots if w and w["kind"] == "gun"), None)
-                tg = {"pos": obj["pos"], "vel": obj.get("vel", (0, 0, 0)), "cubes": 0}
-                yaw, pitch, dist, pt = self.aim_at(me, tg, gun["stats"]["speed"] if gun else None, h)
-                aim = [yaw, pitch]
-                on = abs(wrap(yaw - me["aim"][0])) < max(0.012, math.atan2(0.9, dist)) and abs(pitch - me["aim"][1]) < max(0.012, math.atan2(0.9, dist))
-                muzzle = (x, y, z + st.get("muzzle_height", 7.0))
-                if on and self.arena.los(muzzle, pt):
-                    for i, w in enumerate(slots):
-                        if w and (w["kind"] == "gun" or (w["kind"] == "lightning" and dist < w["stats"]["range"] and me["energy"] > 40)):
-                            fire[i] = True
+                tg = {"pos": obj["pos"], "vel": obj.get("vel", (0, 0, 0)), "cubes": 0, "h": h, "r": 1.4, "farm": True}
+                aim, fire = self.shoot(me, tg, slots, t)
             elif under_fire:
                 aim = [self.threat_bearing, 0.0]     # face whoever is shooting us (rear hits are x1.5)
             elif enemies:
@@ -476,10 +489,15 @@ class Bot:
             self.strafe_until = t + self.rng.uniform(0.25, 0.75)
         rng_want = FIGHT_RANGE
         held = [w["kind"] for w in me["weapons"] if w]
-        if "lightning" in held and me["energy"] > 30 and "laser" not in tgt.get("weapons", []):
-            rng_want = ZAP_RANGE
         if "laser" in held:
             rng_want = LASER_RANGE
+        if "lightning" in held:
+            # brawl inside arc range while there is energy for it; back off to recharge when dry
+            if me["energy"] > 35 or (self.zapping and me["energy"] > 8):
+                rng_want, self.zapping = ZAP_RANGE, True
+            else:
+                self.zapping = False
+                rng_want = LASER_RANGE if "laser" in held else FIGHT_RANGE
         radial = 0.0
         if d > rng_want + 12:
             radial = 0.8
@@ -563,7 +581,7 @@ class Bot:
         yaw, pitch, dist, pt = self.aim_at(me, tgt, gspeed)
         aim = [yaw, pitch]
         cur_yaw, cur_pitch = me["aim"]
-        r = 2.5 * (1 + 0.05 * tgt.get("cubes", 0))
+        r = tgt.get("r", 2.5 * (1 + 0.05 * tgt.get("cubes", 0)))
         tol = max(0.01, math.atan2(r * 0.8, dist))
         on = abs(wrap(yaw - cur_yaw)) < tol and abs(pitch - cur_pitch) < max(0.02, math.atan2(4.0, dist))
         clear = self.arena.los(muzzle, pt)
@@ -586,9 +604,10 @@ class Bot:
                     fire[las_i] = not (lined and self.arena.los(muzzle, dpt))
         if lit_i is not None:
             w = slots[lit_i]
-            if dist < w["stats"]["range"] and abs(wrap(yaw - cur_yaw)) < math.radians(w["stats"]["cone_deg"]) * 0.9 and me["energy"] >= w["stats"]["energy"] + 8 and clear:
+            floor_e = 55 if tgt.get("farm") else w["stats"]["energy"] + 8
+            if dist < w["stats"]["range"] and abs(wrap(yaw - cur_yaw)) < math.radians(w["stats"]["cone_deg"]) * 0.9 and me["energy"] >= floor_e and clear:
                 fire[lit_i] = True
-        if mor_i is not None and 20 < dist < 150:
+        if mor_i is not None and 20 < dist < 150 and not tgt.get("farm"):
             w = slots[mor_i]
             ms = w["stats"]
             v, g = ms["speed"], ms["gravity"]
