@@ -46,7 +46,7 @@ RUSH = _env("MR_RUSH", 1.0) > 0
 BREAK_N = _env("MR_BREAKN", 5.0)          # break off on numbers alone only against this many attackers
 DODGE = _env("MR_DODGE", 1.0) > 0
 FFA_DEATHS = _env("MR_FFADEATHS", 4.0)    # deaths we did not cause before we believe it is a free-for-all
-FARM_HP = _env("MR_FARMHP", 0.5)
+FARM_HP = _env("MR_FARMHP", 0.8)
 FFA_EVIDENCE = _env("MR_FFAEVID", 1.0) > 0
 FFA_STAND = _env("MR_FFASTAND", 1.0) > 0   # in a free-for-all, duel a lone attacker instead of running from it
 FFA_TWO = _env("MR_FFATWO", 40.0)           # two attackers before this time and before our first kill => free-for-all (0 = off)
