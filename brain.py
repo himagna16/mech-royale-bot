@@ -46,8 +46,9 @@ HUNT = _env("MR_HUNT", 0.0) > 0            # when idle and healthy, walk to wher
 PURSUE = _env("MR_PURSUE", 1.0) > 0
 CUBE_MEMORY = _env("MR_CUBEMEM", 40.0)
 ARMED_MIN = _env("MR_ARMEDMIN", 2.0)
-DODGE_ALL = _env("MR_DODGEALL", 0.0)       # weight of the sidestep added to non-duel movement (0 = off)
-PREFIRE = _env("MR_PREFIRE", 0.0)          # ticks of torso swing to anticipate when firing the gun (0 = off)
+DODGE_ALL = _env("MR_DODGEALL", 0.9)       # weight of the sidestep added to non-duel movement (0 = off)
+OPEN_T = _env("MR_OPENT", 0.0)             # seconds of cautious opening (0 = off)
+PREFIRE = _env("MR_PREFIRE", 1.0)          # ticks of torso swing to anticipate when firing the gun (0 = off)
 SALT = _env("MR_SALT", 0.0)               # reshuffles our random strafing without changing behaviour
 PICK_MEMORY = _env("MR_PICKMEM", 75.0)
 DROPS = _env("MR_DROPS", 0.0)           # go for supply drops within this many metres (0 = only when idle)
@@ -431,6 +432,11 @@ class Bot:
         late = obs["alive"] <= 3 or zone["next_radius"] <= 30
         engaged = t - self.threat_t < 4.0 or (tgt is not None and tgt["d"] < 65)
         survive = ffa and not late     # free-for-all: placement only, so stay out of other people's fights
+        # the first seconds decide free-for-alls (a third of the field dies at its spawn): start nothing until hit
+        opening = OPEN_T > 0 and t < OPEN_T and not ffa
+        # in those situations an enemy in view means "leave", unless it is on top of us or nearly dead
+        winning = tgt is not None and tfrac < hp_frac - 0.2 and n_threat <= 1
+        leave = (survive or opening) and tgt is not None and not (engaged and (tgt["d"] < 45 or winning))
         cubes = [cp for cp in self.cube_memo.values()
                  if abs(cp[2] - self.arena.ground_at(cp[0], cp[1])) < 2.5 and math.hypot(cp[0] - zc[0], cp[1] - zc[1]) < zone["radius"] + 40]
         cube = min(cubes, key=lambda c: math.hypot(c[0] - x, c[1] - y), default=None)
@@ -448,9 +454,10 @@ class Bot:
                 mv = self.retreat_dir(obs, me, [{"pos": [x + 90 * math.cos(b), y + 90 * math.sin(b), z], "los": True, "d": 90.0}], t)
             boost = me["energy"] > 25 and any(e["los"] and e["d"] < 120 for e in enemies)
             mode = "retreat"
-        elif survive and tgt is not None and not engaged:
-            mv = self.retreat_dir(obs, me, visible or enemies, t)   # seen someone who is not on us yet: slip out of sight
-            hold_fire = True
+        elif leave:
+            mv = self.retreat_dir(obs, me, visible or enemies, t)   # get out of sight; shoot back only if it is already on us
+            hold_fire = not engaged
+            boost = t - self.threat_t < 2.5 and me["energy"] > 20
             mode = "slip"
         elif survive and tgt is None and t - self.threat_t >= 4.0:
             hx, hy = self.hide_spot(obs, me, t)
@@ -485,6 +492,7 @@ class Bot:
             b = self.threat_bearing
             ghost = {"pos": [x + 90 * math.cos(b), y + 90 * math.sin(b), z], "los": True, "d": 90.0}
             mv = self.retreat_dir(obs, me, [ghost], t)
+            boost = (survive or opening) and me["energy"] > 20
             mode = "evade"
         else:
             # nobody in sight: weapons, cubes, drops, then drones and crates, drifting toward the next circle
