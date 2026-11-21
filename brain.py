@@ -46,6 +46,8 @@ HUNT = _env("MR_HUNT", 0.0) > 0            # when idle and healthy, walk to wher
 PURSUE = _env("MR_PURSUE", 1.0) > 0
 CUBE_MEMORY = _env("MR_CUBEMEM", 40.0)
 ARMED_MIN = _env("MR_ARMEDMIN", 2.0)
+DODGE_ALL = _env("MR_DODGEALL", 0.0)       # weight of the sidestep added to non-duel movement (0 = off)
+PREFIRE = _env("MR_PREFIRE", 0.0)          # ticks of torso swing to anticipate when firing the gun (0 = off)
 SALT = _env("MR_SALT", 0.0)               # reshuffles our random strafing without changing behaviour
 PICK_MEMORY = _env("MR_PICKMEM", 75.0)
 DROPS = _env("MR_DROPS", 0.0)           # go for supply drops within this many metres (0 = only when idle)
@@ -530,6 +532,16 @@ class Bot:
         if final and not must_move and mode in ("idle", "zone", "roam"):
             mv = self.go(zc[0], zc[1], me, t) if dz_next > 2.0 else (0.0, 0.0)
 
+        # ---- shots on the way: sidestep them whatever else we are doing
+        if DODGE_ALL and mode not in ("fight", "hide", "idle") and obs["projectiles"]:
+            side = self.sidestep(obs, me)
+            if side is not None:
+                n0 = math.hypot(mv[0], mv[1])
+                bx, by = mv[0] + side[0] * DODGE_ALL, mv[1] + side[1] * DODGE_ALL
+                nb = math.hypot(bx, by)
+                if nb > 1e-6 and not self.arena.blocked(x + bx / nb * 4.0, y + by / nb * 4.0, z):
+                    mv = (bx / nb, by / nb) if n0 > 0.05 else (side[0], side[1])
+
         # ---- stuck recovery
         if self.last_pos is not None and math.hypot(mv[0], mv[1]) > 0.5:
             if math.hypot(x - self.last_pos[0], y - self.last_pos[1]) < 0.15:
@@ -596,6 +608,31 @@ class Bot:
         return act
 
     # ------------------------------------------------------------------ behaviours
+    def sidestep(self, obs, me):
+        """Unit vector that moves us off the line of the most urgent incoming shot, or None."""
+        x, y, _ = me["pos"]
+        best = None
+        for p in obs["projectiles"]:
+            vx, vy = p["vel"][0], p["vel"][1]
+            sp2 = vx * vx + vy * vy
+            if sp2 < 1.0:
+                continue
+            tca = ((x - p["pos"][0]) * vx + (y - p["pos"][1]) * vy) / sp2
+            if tca < 0.04 or tca > (1.6 if p["kind"] == "mortar" else 0.75):
+                continue
+            cx, cy = p["pos"][0] + vx * tca - x, p["pos"][1] + vy * tca - y     # where it passes, relative to us
+            miss = math.hypot(cx, cy)
+            if miss > (9.0 if p["kind"] == "mortar" else 4.5):
+                continue
+            if best is None or tca < best[0]:
+                best = (tca, cx, cy, vx, vy, math.sqrt(sp2), miss)
+        if best is None:
+            return None
+        _t, cx, cy, vx, vy, sp, miss = best
+        if miss > 0.3:
+            return (-cx / miss, -cy / miss)            # step directly away from the line
+        return (-vy / sp, vx / sp)                     # dead on: either side, pick the left
+
     def dodge_sign(self, obs, me, ux, uy):
         """Which way to sidestep (+1 / -1 along the left-hand perpendicular of the target bearing) so that
         incoming shots pass as far from us as possible; None if nothing is about to arrive."""
@@ -753,7 +790,9 @@ class Bot:
         cur_yaw, cur_pitch = me["aim"]
         r = tgt.get("r", 2.5 * (1 + 0.05 * tgt.get("cubes", 0)))
         tol = max(0.012, math.atan2(r * 1.0, dist))
-        on = abs(wrap(yaw - cur_yaw)) < tol and abs(pitch - cur_pitch) < max(0.02, math.atan2(4.0, dist))
+        swing = st.get("turn_rate", 4.0) * 0.05 * PREFIRE
+        on = max(0.0, abs(wrap(yaw - cur_yaw)) - swing) < tol and \
+            max(0.0, abs(pitch - cur_pitch) - st.get("pitch_rate", 3.0) * 0.05 * PREFIRE) < max(0.02, math.atan2(4.0, dist))
         clear = self.arena.los(muzzle, pt)
         if gun_i is not None:
             g = slots[gun_i]
