@@ -292,7 +292,7 @@ class Bot:
             # prefer the one we can finish, then the nearest
             tgt = min(visible, key=lambda e: e["d"] + 0.08 * e.get("hp", 1400))
         n_threat = len([e for e in visible if e["d"] < 160])
-        if hp_frac < RETREAT_HP or (n_threat >= 3 and hp_frac < 0.7):
+        if False:  # experiment: never retreat
             self.retreating = True
         elif hp_frac > REJOIN_HP or (not enemies and hp_frac > 0.6):
             self.retreating = False
