@@ -16,6 +16,12 @@ UPGRADE_ORDER = [
     "jets", "gyros", "sensors", "gun_rate", "mortar_reload", "mortar_splash", "mortar_velocity",
 ]
 
+UPGRADE_ORDER_B = [
+    "plating", "nanites", "armor", "servos", "laser_damage", "lightning_efficiency", "laser_charge", "gun_damage",
+    "reactor", "capacitor", "lightning_chain", "lightning_range", "gun_mag", "gun_velocity", "laser_pierce",
+    "jets", "gyros", "sensors", "gun_rate", "mortar_reload", "mortar_splash", "mortar_velocity",
+]
+
 # tunables (the MR_* environment overrides exist only for local experiments)
 def _env(name, default):
     try:
@@ -49,6 +55,8 @@ HUNT = _env("MR_HUNT", 0.0) > 0            # when idle and healthy, walk to wher
 PURSUE = _env("MR_PURSUE", 1.0) > 0
 CUBE_MEMORY = _env("MR_CUBEMEM", 40.0)
 ARMED_MIN = _env("MR_ARMEDMIN", 2.0)
+HEAL_TO = _env("MR_HEALTO", 0.6)            # with nobody in sight, leave cover once health is back above this
+UPG_B = _env("MR_UPGB", 0.0) > 0            # alternative upgrade order (repair and speed earlier)
 DODGE_FIGHT = _env("MR_DODGEFIGHT", 0.0) > 0  # in a duel, pick the best of nine directions against incoming shots
 DODGE_ALL = _env("MR_DODGEALL", 1.5)       # weight of the sidestep added to non-duel movement (0 = off)
 OPEN_T = _env("MR_OPENT", 0.0)             # seconds of cautious opening (0 = off)
@@ -335,7 +343,7 @@ class Bot:
 
         if obs["offer"]:
             ids = [c["id"] for c in obs["offer"]["choices"]]
-            order = UPGRADE_ORDER
+            order = UPGRADE_ORDER_B if UPG_B else UPGRADE_ORDER
             act["pick"] = min(range(len(ids)), key=lambda i: order.index(ids[i]) if ids[i] in order else 99)
 
         enemies = [m for m in obs["mechs"] if m["kind"] == "mech"]
@@ -436,7 +444,7 @@ class Bot:
             self.retreating = False      # never walk away from a kill
         elif losing:
             self.retreating = True
-        elif hp_frac > REJOIN_HP or (not enemies and hp_frac > 0.6 and t - self.threat_t > 6.0):
+        elif hp_frac > REJOIN_HP or (not enemies and hp_frac > HEAL_TO and t - self.threat_t > 6.0):
             self.retreating = False
 
         mv = (0.0, 0.0)
