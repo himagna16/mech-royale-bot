@@ -108,6 +108,8 @@ class Bot:
         self.angle_pt, self.angle_t = None, -100.0
         self.zapping = False
         self.ffa_latched = False
+        self.ffa_evidence = 0
+        self.enemy_last = {}     # mech id -> (x, y, t) last seen
         self.prev_vel = {}       # mech id -> (t, velocity) from the previous observation
         self.hit_by = {}         # mech id -> last time it damaged us
         self.memo_t = {}         # pickup / cube id -> last time we saw it
@@ -161,6 +163,9 @@ class Bot:
         d_zone = np.hypot(self.cell_x - z["next_center"][0], self.cell_y - z["next_center"][1])
         inner = max(z["next_radius"] - 22.0, z["next_radius"] * 0.5)
         cost = self.exposure + 0.22 * d_me + np.maximum(0.0, d_zone - inner) * 6.0
+        for ex, ey, et in self.enemy_last.values():
+            if t - et < 25.0:
+                cost = cost + np.maximum(0.0, 150.0 - np.hypot(self.cell_x - ex, self.cell_y - ey)) * 0.5   # the first minute is won by distance
         if self.hide is not None:
             cost = cost + 12.0 * (np.hypot(self.cell_x - self.hide[0], self.cell_y - self.hide[1]) > 10.0)  # stay put unless clearly better
         cost[~self.nav.free] = 1e9
@@ -328,6 +333,35 @@ class Bot:
                 e["los"] = False
         enemies.sort(key=lambda e: e["d"])
         visible = [e for e in enemies if e["los"]]
+
+        # ---- the practice squad never shoots its own: other mechs shooting each other means a free-for-all
+        if not self.ffa_latched and enemies:
+            for b in obs["beams"]:
+                end = b["path"][-1]
+                if math.hypot(end[0] - x, end[1] - y) < 12:
+                    continue
+                for e in enemies:
+                    if e["id"] != b.get("by") and math.hypot(end[0] - e["pos"][0], end[1] - e["pos"][1]) < 4.5 \
+                            and abs(end[2] - (e["pos"][2] + 4.5)) < 6:
+                        self.ffa_evidence += 1
+            for pr in obs["projectiles"]:
+                if pr["kind"] != "gun":
+                    continue
+                vx, vy = pr["vel"][0], pr["vel"][1]
+                sp2 = vx * vx + vy * vy
+                if sp2 < 1:
+                    continue
+                px, py = pr["pos"][0], pr["pos"][1]
+                tu = ((x - px) * vx + (y - py) * vy) / sp2
+                if math.hypot(px + vx * tu - x, py + vy * tu - y) < 15:
+                    continue                      # aimed at (or past) us: says nothing
+                for e in enemies:
+                    te = ((e["pos"][0] - px) * vx + (e["pos"][1] - py) * vy) / sp2
+                    if 0.0 < te < 0.6 and math.hypot(px + vx * te - e["pos"][0], py + vy * te - e["pos"][1]) < 3.0:
+                        self.ffa_evidence += 1
+            if self.ffa_evidence >= 3:
+                self.ffa_latched = True
+                ffa = True
 
         # ---- weapons on the ground
         slots = me["weapons"]
@@ -543,6 +577,8 @@ class Bot:
             act["aim"] = [float(aim[0]), float(aim[1])]
         act["fire"] = [bool(fire[0]), bool(fire[1])]
         self.prev_vel = {m["id"]: (t, m["vel"]) for m in obs["mechs"]}
+        for m in enemies:
+            self.enemy_last[m["id"]] = (m["pos"][0], m["pos"][1], t)
         return act
 
     # ------------------------------------------------------------------ behaviours
