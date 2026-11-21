@@ -3,6 +3,8 @@ import math
 import os
 import random
 
+import numpy as np
+
 from geom import Arena
 from nav import Nav
 
@@ -50,6 +52,16 @@ class Bot:
         self.rng = random.Random(hello.get("seed", 1))
         self.arena = Arena(hello["map"]["dir"])
         self.nav = Nav(self.arena)
+        try:
+            self.exposure = np.load(os.path.join(os.path.dirname(os.path.abspath(__file__)), "exposure.npy")).astype(np.float32)
+        except Exception:
+            self.exposure = np.full(self.nav.free.shape, 120.0, dtype=np.float32)
+        self.cell_x = (self.nav.x0 + np.arange(self.nav.nx) * self.nav.cell)[None, :]
+        self.cell_y = (self.nav.y0 + np.arange(self.nav.ny) * self.nav.cell)[:, None]
+        self.hide = None
+        self.hide_t = -100.0
+        self.hide_key = None
+        self.mode = "idle"
         self.zone_field = None
         self.zone_key = None
         self.goal_field = None
@@ -62,6 +74,7 @@ class Bot:
         self.threat_t = -100.0
         self.known = {}          # enemy id -> last obs dict + 't'
         self.pick_memo = {}      # pickup id -> (kind, pos)
+        self.cube_memo = {}      # cube id -> pos
         self.my_kills = 0
         self.deaths_seen = 0
         self.last_alive = None
@@ -98,6 +111,25 @@ class Bot:
         if mv == (0.0, 0.0):
             return ((x - mx) / d, (y - my) / d)
         return mv
+
+    def hide_spot(self, obs, me, t):
+        """A tucked-away walkable cell inside the next circle, not too far from us. Cheap: one numpy pass."""
+        z = obs["zone"]
+        key = (round(z["next_center"][0]), round(z["next_center"][1]), z["next_radius"])
+        if self.hide is not None and key == self.hide_key and t - self.hide_t < 6.0:
+            return self.hide
+        x, y = me["pos"][0], me["pos"][1]
+        d_me = np.hypot(self.cell_x - x, self.cell_y - y)
+        d_zone = np.hypot(self.cell_x - z["next_center"][0], self.cell_y - z["next_center"][1])
+        inner = max(z["next_radius"] - 22.0, z["next_radius"] * 0.5)
+        cost = self.exposure + 0.22 * d_me + np.maximum(0.0, d_zone - inner) * 6.0
+        if self.hide is not None:
+            cost = cost + 12.0 * (np.hypot(self.cell_x - self.hide[0], self.cell_y - self.hide[1]) > 10.0)  # stay put unless clearly better
+        cost[~self.nav.free] = 1e9
+        j, i = np.unravel_index(int(cost.argmin()), cost.shape)
+        self.hide = self.nav.center(int(i), int(j))
+        self.hide_key, self.hide_t = key, t
+        return self.hide
 
     def zone_dir(self, obs, me):
         z = obs["zone"]
@@ -162,6 +194,13 @@ class Bot:
         ffa = self.deaths_seen - self.my_kills >= 2   # others are dying without us: a free-for-all, not the squad
         for p in obs["pickups"]:
             self.pick_memo[p["id"]] = (p["kind"], p["pos"])
+        seen_cubes = {c["id"] for c in obs["cubes"]}
+        for c in obs["cubes"]:
+            self.cube_memo[c["id"]] = c["pos"]
+        for cid, cpos in list(self.cube_memo.items()):
+            # forget a remembered cube once we are standing where it was and it is not there
+            if cid not in seen_cubes and math.hypot(cpos[0] - x, cpos[1] - y) < 12:
+                del self.cube_memo[cid]
         for ev in obs["events"]:
             if ev["type"] in ("took", "take_failed") and ev.get("reason") in (None, "gone"):
                 self.pick_memo.pop(ev["id"], None)
@@ -225,6 +264,10 @@ class Bot:
         mv = (0.0, 0.0)
         boost = False
         mode = "idle"
+        hold_fire = False
+        late = obs["alive"] <= 3 or zone["next_radius"] <= 30
+        engaged = t - self.threat_t < 4.0 or (tgt is not None and tgt["d"] < 65)
+        survive = ffa and not late     # free-for-all: placement only, so stay out of other people's fights
         if must_move:
             mv = self.zone_dir(obs, me)
             boost = not me["in_zone"] and me["energy"] > 5
@@ -233,6 +276,17 @@ class Bot:
             mv = self.retreat_dir(obs, me, enemies, t)
             boost = me["energy"] > 25 and any(e["los"] and e["d"] < 120 for e in enemies)
             mode = "retreat"
+        elif survive and tgt is not None and not engaged:
+            mv = self.retreat_dir(obs, me, visible, t)   # seen someone who is not on us yet: slip out of sight
+            hold_fire = True
+            mode = "slip"
+        elif survive and tgt is None and t - self.threat_t >= 4.0:
+            hx, hy = self.hide_spot(obs, me, t)
+            if math.hypot(hx - x, hy - y) > 5.0:
+                mv = self.go(hx, hy, me, t)
+                quiet = st["walk_speed"] > 0 and 4.6 / st["walk_speed"]
+                mv = (mv[0] * quiet, mv[1] * quiet)       # under 5 m/s makes no footstep sound
+            mode = "hide"
         elif tgt is not None:
             mv = self.duel_move(me, tgt, t, ffa)
             mode = "fight"
@@ -250,12 +304,14 @@ class Bot:
             mode = "stalk"
         else:
             # nobody around: heal first, then loot, then drift to the next circle
-            cube = min(obs["cubes"], key=lambda c: math.dist(c["pos"][:2], (x, y)), default=None)
+            cubes = [{"pos": cp} for cp in self.cube_memo.values()
+                     if abs(cp[2] - self.arena.ground_at(cp[0], cp[1])) < 2.5 and math.hypot(cp[0] - zc[0], cp[1] - zc[1]) < zone["radius"] + 40]
+            cube = min(cubes, key=lambda c: math.dist(c["pos"][:2], (x, y)), default=None)
             drop = next((d for d in obs["drops"] if d["lands_in"] < 12 and math.hypot(d["pos"][0] - zc[0], d["pos"][1] - zc[1]) < zone["next_radius"]), None)
-            if cube and math.dist(cube["pos"][:2], (x, y)) < 60 and abs(cube["pos"][2] - z) < 4:
+            if cube and math.dist(cube["pos"][:2], (x, y)) < 170:
                 mv = self.go(cube["pos"][0], cube["pos"][1], me, t)
                 mode = "cube"
-            elif want and want[4] < 140 and hp_frac > 0.5:
+            elif want and want[4] < 230 and hp_frac > 0.4:
                 mv = self.go(want[3][0], want[3][1], me, t)
                 mode = "loot"
             elif drop and hp_frac > 0.5 and not ffa and math.hypot(drop["pos"][0] - x, drop["pos"][1] - y) < 220:
@@ -291,12 +347,16 @@ class Bot:
         aim = None
         if tgt is not None:
             aim, fire = self.shoot(me, tgt, slots, t)
+            if hold_fire:
+                fire = [False, False]
         else:
             farm = None
             under_fire = t - self.threat_t < 3.0 and self.threat_bearing is not None
-            if not under_fire and (not enemies or mode in ("idle", "cube", "loot", "zone")):
-                cands = [(math.dist(n["pos"], me["pos"]), n, 3.5) for n in npcs if hp_frac > 0.55]
-                cands += [(math.dist(c["pos"], me["pos"]), c, 2.4) for c in obs["crates"]]
+            if not under_fire and not survive and (not enemies or mode in ("idle", "cube", "loot", "zone")):
+                cands = []
+                if hp_frac >= 0.97:   # dealing damage resets the 5 s regen timer: heal first, farm after
+                    cands = [(math.dist(n["pos"], me["pos"]), n, 3.5) for n in npcs]
+                    cands += [(math.dist(c["pos"], me["pos"]), c, 2.4) for c in obs["crates"]]
                 cands = [c for c in cands if c[0] < 110]
                 if cands:
                     farm = min(cands, key=lambda c: c[0])
