@@ -55,6 +55,7 @@ HUNT = _env("MR_HUNT", 0.0) > 0            # when idle and healthy, walk to wher
 PURSUE = _env("MR_PURSUE", 1.0) > 0
 CUBE_MEMORY = _env("MR_CUBEMEM", 40.0)
 ARMED_MIN = _env("MR_ARMEDMIN", 2.0)
+UNFLANK = _env("MR_UNFLANK", 0.0)           # weight of backing away from the group when hit in the back mid-duel (0 = off)
 ANTI_ZAP = _env("MR_ANTIZAP", 0.0)         # preferred distance from a mech carrying lightning when we have none (0 = off)
 LASER_COVER = _env("MR_LASERCOVER", 14.0)   # reach (m) to search for cover from a charged laser aimed at us (0 = off)
 HEAL_TO = _env("MR_HEALTO", 0.6)            # with nobody in sight, leave cover once health is back above this
@@ -504,6 +505,21 @@ class Bot:
             else:
                 mv, boost = self.duel_move(obs, me, tgt, t)
                 mode = "fight"
+                if UNFLANK and t - self.rear_t < 1.5 and self.rear_by != tgt["id"]:
+                    # someone else is hitting our back (x1.5): back away from the group so they all end up in front
+                    pts = [(e["pos"][0], e["pos"][1]) for e in visible]
+                    b = self.rear_bearing
+                    pts.append((x + 80 * math.cos(b), y + 80 * math.sin(b)))
+                    cx_ = sum(p_[0] for p_ in pts) / len(pts)
+                    cy_ = sum(p_[1] for p_ in pts) / len(pts)
+                    ax_, ay_ = x - cx_, y - cy_
+                    an = math.hypot(ax_, ay_)
+                    if an > 1.0:
+                        bx_, by_ = mv[0] * 0.6 + ax_ / an * UNFLANK, mv[1] * 0.6 + ay_ / an * UNFLANK
+                        bn = math.hypot(bx_, by_)
+                        if bn > 1e-6 and not self.arena.blocked(x + bx_ / bn * 4.0, y + by_ / bn * 4.0, z):
+                            mv = (bx_ / bn, by_ / bn)
+                            mode = "unflank"
             if not survive and tgt["d"] > 40:
                 # the economy keeps running during a fight: step onto nearby weapons and cubes while shooting
                 if want and want[4] < (GRAB if not armed else 35.0):
