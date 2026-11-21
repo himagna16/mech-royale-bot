@@ -22,6 +22,12 @@ UPGRADE_ORDER_B = [
     "jets", "gyros", "sensors", "gun_rate", "mortar_reload", "mortar_splash", "mortar_velocity",
 ]
 
+UPGRADE_ORDER_C = [
+    "laser_damage", "plating", "gun_damage", "armor", "laser_charge", "lightning_efficiency", "nanites", "gun_rate",
+    "servos", "reactor", "capacitor", "lightning_chain", "lightning_range", "gun_mag", "gun_velocity", "laser_pierce",
+    "jets", "gyros", "sensors", "mortar_reload", "mortar_splash", "mortar_velocity",
+]
+
 # tunables (the MR_* environment overrides exist only for local experiments)
 def _env(name, default):
     try:
@@ -63,6 +69,7 @@ UNFLANK = _env("MR_UNFLANK", 0.0)           # weight of backing away from the gr
 ANTI_ZAP = _env("MR_ANTIZAP", 0.0)         # preferred distance from a mech carrying lightning when we have none (0 = off)
 LASER_COVER = _env("MR_LASERCOVER", 14.0)   # reach (m) to search for cover from a charged laser aimed at us (0 = off)
 HEAL_TO = _env("MR_HEALTO", 0.6)            # with nobody in sight, leave cover once health is back above this
+UPG_C = _env("MR_UPGC", 0.0) > 0            # damage-first upgrade order
 UPG_B = _env("MR_UPGB", 0.0) > 0            # alternative upgrade order (repair and speed earlier)
 DODGE_FIGHT = _env("MR_DODGEFIGHT", 0.0) > 0  # in a duel, pick the best of nine directions against incoming shots
 DODGE_ALL = _env("MR_DODGEALL", 1.5)       # weight of the sidestep added to non-duel movement (0 = off)
@@ -354,7 +361,7 @@ class Bot:
                 self.heard = (t, snd["bearing"], snd["dist"])
         if obs["offer"]:
             ids = [c["id"] for c in obs["offer"]["choices"]]
-            order = UPGRADE_ORDER_B if UPG_B else UPGRADE_ORDER
+            order = UPGRADE_ORDER_C if UPG_C else (UPGRADE_ORDER_B if UPG_B else UPGRADE_ORDER)
             act["pick"] = min(range(len(ids)), key=lambda i: order.index(ids[i]) if ids[i] in order else 99)
 
         enemies = [m for m in obs["mechs"] if m["kind"] == "mech"]
