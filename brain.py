@@ -45,6 +45,7 @@ FFA_EVIDENCE = _env("MR_FFAEVID", 1.0) > 0
 HUNT = _env("MR_HUNT", 0.0) > 0            # when idle and healthy, walk to where a mech was last seen
 PURSUE = _env("MR_PURSUE", 1.0) > 0
 CUBE_MEMORY = _env("MR_CUBEMEM", 40.0)
+ARMED_MIN = _env("MR_ARMEDMIN", 2.0)
 SALT = _env("MR_SALT", 0.0)               # reshuffles our random strafing without changing behaviour
 PICK_MEMORY = _env("MR_PICKMEM", 75.0)
 DROPS = _env("MR_DROPS", 0.0)           # go for supply drops within this many metres (0 = only when idle)
@@ -432,7 +433,7 @@ class Bot:
                  if abs(cp[2] - self.arena.ground_at(cp[0], cp[1])) < 2.5 and math.hypot(cp[0] - zc[0], cp[1] - zc[1]) < zone["radius"] + 40]
         cube = min(cubes, key=lambda c: math.hypot(c[0] - x, c[1] - y), default=None)
         cube_d = math.hypot(cube[0] - x, cube[1] - y) if cube else 1e9
-        armed = max(ranks) >= 2          # a laser or lightning; a mortar alone does not count
+        armed = max(ranks) >= ARMED_MIN  # a laser or lightning; a mortar alone does not count
         if must_move:
             mv = self.zone_dir(obs, me)
             boost = not me["in_zone"] and me["energy"] > 5
