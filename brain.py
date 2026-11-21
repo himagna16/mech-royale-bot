@@ -49,7 +49,7 @@ ARMED_MIN = _env("MR_ARMEDMIN", 2.0)
 DODGE_ALL = _env("MR_DODGEALL", 0.9)       # weight of the sidestep added to non-duel movement (0 = off)
 OPEN_T = _env("MR_OPENT", 0.0)             # seconds of cautious opening (0 = off)
 PREFIRE = _env("MR_PREFIRE", 1.0)          # ticks of torso swing to anticipate when firing the gun (0 = off)
-SALT = _env("MR_SALT", 0.0)               # reshuffles our random strafing without changing behaviour
+SALT = _env("MR_SALT", 2.0)               # reshuffles our random strafing without changing behaviour
 PICK_MEMORY = _env("MR_PICKMEM", 75.0)
 DROPS = _env("MR_DROPS", 0.0)           # go for supply drops within this many metres (0 = only when idle)
 ZAP_RANGE = _env("MR_ZRANGE", 28.0)
