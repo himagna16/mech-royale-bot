@@ -50,7 +50,7 @@ DODGE_ALL = _env("MR_DODGEALL", 0.9)       # weight of the sidestep added to non
 OPEN_T = _env("MR_OPENT", 0.0)             # seconds of cautious opening (0 = off)
 LASER_PREFIRE = _env("MR_LPREFIRE", 0.0)   # same anticipation for releasing the laser (0 = wait until lined up)
 LASER_TOL = _env("MR_LTOL", 0.75)          # how close to centre the beam must point, in target radii
-JUKE = _env("MR_JUKE", 1.0)                # scales the time between strafe reversals
+JUKE = _env("MR_JUKE", 0.7)                # scales the time between strafe reversals
 PREFIRE = _env("MR_PREFIRE", 1.0)          # ticks of torso swing to anticipate when firing the gun (0 = off)
 SALT = _env("MR_SALT", 0.0)               # reshuffles our random strafing without changing behaviour
 PICK_MEMORY = _env("MR_PICKMEM", 75.0)
