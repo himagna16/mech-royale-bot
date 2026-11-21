@@ -42,6 +42,9 @@ DODGE = _env("MR_DODGE", 1.0) > 0
 FFA_DEATHS = _env("MR_FFADEATHS", 4.0)    # deaths we did not cause before we believe it is a free-for-all
 FARM_HP = _env("MR_FARMHP", 0.8)
 PURSUE = _env("MR_PURSUE", 1.0) > 0
+CUBE_MEMORY = _env("MR_CUBEMEM", 40.0)
+SALT = _env("MR_SALT", 0.0)               # reshuffles our random strafing without changing behaviour
+PICK_MEMORY = _env("MR_PICKMEM", 75.0)
 DROPS = _env("MR_DROPS", 0.0)           # go for supply drops within this many metres (0 = only when idle)
 ZAP_RANGE = _env("MR_ZRANGE", 28.0)
 LATENCY = _env("MR_LAT", 0.1)
@@ -74,7 +77,7 @@ class Bot:
     def __init__(self, hello):
         self.cfg = hello["config"]
         self.me_id = hello["slot"]
-        self.rng = random.Random(hello.get("seed", 1))
+        self.rng = random.Random(hello.get("seed", 1) + int(SALT))
         self.arena = Arena(hello["map"]["dir"])
         self.nav = Nav(self.arena)
         try:
@@ -107,6 +110,7 @@ class Bot:
         self.ffa_latched = False
         self.prev_vel = {}       # mech id -> (t, velocity) from the previous observation
         self.hit_by = {}         # mech id -> last time it damaged us
+        self.memo_t = {}         # pickup / cube id -> last time we saw it
         self.tgt_id = None
         self.now = 0.0
         self.my_kills = 0
@@ -274,6 +278,14 @@ class Bot:
         ffa = self.ffa_latched
         for p in obs["pickups"]:
             self.pick_memo[p["id"]] = (p["kind"], p["pos"])
+            self.memo_t[p["id"]] = t
+        for c in obs["cubes"]:
+            self.memo_t[c["id"]] = t
+        # other mechs take things too: stop trusting what we have not seen for a while
+        for pid in [k for k in self.pick_memo if t - self.memo_t.get(k, t) > PICK_MEMORY]:
+            del self.pick_memo[pid]
+        for cid in [k for k in self.cube_memo if t - self.memo_t.get(k, t) > CUBE_MEMORY]:
+            del self.cube_memo[cid]
         for c in obs["crates"]:
             self.farm_memo[c["id"]] = (c["pos"], 2.4)
         for n in obs["mechs"]:
@@ -384,7 +396,7 @@ class Bot:
                  if abs(cp[2] - self.arena.ground_at(cp[0], cp[1])) < 2.5 and math.hypot(cp[0] - zc[0], cp[1] - zc[1]) < zone["radius"] + 40]
         cube = min(cubes, key=lambda c: math.hypot(c[0] - x, c[1] - y), default=None)
         cube_d = math.hypot(cube[0] - x, cube[1] - y) if cube else 1e9
-        armed = max(ranks) > 0
+        armed = max(ranks) >= 2          # a laser or lightning; a mortar alone does not count
         if must_move:
             mv = self.zone_dir(obs, me)
             boost = not me["in_zone"] and me["energy"] > 5
