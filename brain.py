@@ -55,7 +55,7 @@ HUNT = _env("MR_HUNT", 0.0) > 0            # when idle and healthy, walk to wher
 PURSUE = _env("MR_PURSUE", 1.0) > 0
 CUBE_MEMORY = _env("MR_CUBEMEM", 40.0)
 ARMED_MIN = _env("MR_ARMEDMIN", 2.0)
-HEAL_TO = _env("MR_HEALTO", 0.6)            # with nobody in sight, leave cover once health is back above this
+HEAL_TO = _env("MR_HEALTO", 0.85)            # with nobody in sight, leave cover once health is back above this
 UPG_B = _env("MR_UPGB", 0.0) > 0            # alternative upgrade order (repair and speed earlier)
 DODGE_FIGHT = _env("MR_DODGEFIGHT", 0.0) > 0  # in a duel, pick the best of nine directions against incoming shots
 DODGE_ALL = _env("MR_DODGEALL", 1.5)       # weight of the sidestep added to non-duel movement (0 = off)
