@@ -46,7 +46,7 @@ HUNT = _env("MR_HUNT", 0.0) > 0            # when idle and healthy, walk to wher
 PURSUE = _env("MR_PURSUE", 1.0) > 0
 CUBE_MEMORY = _env("MR_CUBEMEM", 40.0)
 ARMED_MIN = _env("MR_ARMEDMIN", 2.0)
-DODGE_ALL = _env("MR_DODGEALL", 0.9)       # weight of the sidestep added to non-duel movement (0 = off)
+DODGE_ALL = _env("MR_DODGEALL", 1.5)       # weight of the sidestep added to non-duel movement (0 = off)
 OPEN_T = _env("MR_OPENT", 0.0)             # seconds of cautious opening (0 = off)
 PREFIRE = _env("MR_PREFIRE", 1.0)          # ticks of torso swing to anticipate when firing the gun (0 = off)
 SALT = _env("MR_SALT", 0.0)               # reshuffles our random strafing without changing behaviour
