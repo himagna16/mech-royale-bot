@@ -16,11 +16,23 @@ UPGRADE_ORDER = [
     "jets", "capacitor", "reactor", "gyros", "sensors", "gun_rate", "mortar_reload", "mortar_splash", "mortar_velocity",
 ]
 
-# tunables
-FIGHT_RANGE = 85.0      # preferred duel distance (m)
-RETREAT_HP = 0.38       # break contact below this health fraction
-REJOIN_HP = 0.85        # ... and come back above this one
+# tunables (the MR_* environment overrides exist only for local experiments)
+def _env(name, default):
+    try:
+        return float(os.environ.get(name, default))
+    except ValueError:
+        return default
+
+
+FIGHT_RANGE = _env("MR_RANGE", 85.0)      # preferred duel distance (m)
+RETREAT_HP = _env("MR_RETREAT", 0.38)     # break contact below this health fraction
+REJOIN_HP = _env("MR_REJOIN", 0.85)       # ... and come back above this one
 ZONE_MARGIN = 18.0
+FARM = _env("MR_FARM", 2.0)
+if os.environ.get("MR_WTOP") == "lightning":
+    WEAPON_RANK = {"lightning": 3, "laser": 2, "mortar": 1, "gun": 0}
+LASER_RANGE = _env("MR_LRANGE", 115.0)
+ZAP_RANGE = _env("MR_ZRANGE", 36.0)
 
 
 def wrap(a):
@@ -75,6 +87,8 @@ class Bot:
         self.known = {}          # enemy id -> last obs dict + 't'
         self.pick_memo = {}      # pickup id -> (kind, pos)
         self.cube_memo = {}      # cube id -> pos
+        self.farm_memo = {}      # crate / drone id -> (pos, height)
+        self.rear_t, self.rear_bearing, self.rear_by = -100.0, 0.0, None
         self.my_kills = 0
         self.deaths_seen = 0
         self.last_alive = None
@@ -159,7 +173,7 @@ class Bot:
         x, y, z = me["pos"]
         mz = z + me["stats"].get("muzzle_height", 7.0)
         h = height if height is not None else 9.0 * (1 + 0.05 * tgt.get("cubes", 0))
-        tx, ty, tz = tgt["pos"][0], tgt["pos"][1], tgt["pos"][2] + h * 0.5
+        tx, ty, tz = tgt["pos"][0], tgt["pos"][1], tgt["pos"][2] + h * tgt.get("frac", 0.5)
         vx, vy, vz = tgt.get("vel", (0, 0, 0))
         if speed:
             # the target cannot fall through the floor: ignore vertical speed unless it is airborne and rising
@@ -184,6 +198,8 @@ class Bot:
 
         # ---- bookkeeping
         for ev in obs["events"]:
+            if ev["type"] == "damaged" and ev.get("rear") and ev.get("bearing") is not None:
+                self.rear_t, self.rear_bearing, self.rear_by = t, ev["bearing"], ev.get("by")
             if ev["type"] == "damaged" and ev.get("bearing") is not None:
                 self.threat_bearing, self.threat_t = ev["bearing"], t
             elif ev["type"] == "kill":
@@ -191,9 +207,20 @@ class Bot:
         if self.last_alive is not None and obs["alive"] < self.last_alive:
             self.deaths_seen += self.last_alive - obs["alive"]
         self.last_alive = obs["alive"]
-        ffa = self.deaths_seen - self.my_kills >= 2   # others are dying without us: a free-for-all, not the squad
+        ffa = self.deaths_seen - self.my_kills >= 3   # others are dying without us: a free-for-all, not the squad
         for p in obs["pickups"]:
             self.pick_memo[p["id"]] = (p["kind"], p["pos"])
+        for c in obs["crates"]:
+            self.farm_memo[c["id"]] = (c["pos"], 2.4)
+        for n in obs["mechs"]:
+            if n["kind"] == "npc":
+                self.farm_memo[n["id"]] = (n["pos"], 3.5)
+        seen_farm = {c["id"] for c in obs["crates"]} | {n["id"] for n in obs["mechs"] if n["kind"] == "npc"}
+        for fid, (fpos, _h) in list(self.farm_memo.items()):
+            # gone if we are close with a clear view and it is not listed any more
+            if fid not in seen_farm and math.hypot(fpos[0] - x, fpos[1] - y) < 40 and self.arena.los(
+                    (x, y, z + 8.0), (fpos[0], fpos[1], fpos[2] + 1.5)):
+                del self.farm_memo[fid]
         seen_cubes = {c["id"] for c in obs["cubes"]}
         for c in obs["cubes"]:
             self.cube_memo[c["id"]] = c["pos"]
@@ -215,7 +242,14 @@ class Bot:
         eye = (x, y, z + st.get("eye_height", 8.0))
         for e in enemies:
             e["d"] = math.dist(e["pos"], me["pos"])
-            e["los"] = self.arena.los(eye, (e["pos"][0], e["pos"][1], e["pos"][2] + 4.5))
+            eh = 9.0 * (1 + 0.05 * e.get("cubes", 0))
+            muz = (x, y, z + st.get("muzzle_height", 7.0))
+            if self.arena.los(muz, (e["pos"][0], e["pos"][1], e["pos"][2] + eh * 0.5)):
+                e["los"], e["frac"] = True, 0.5
+            elif self.arena.los(muz, (e["pos"][0], e["pos"][1], e["pos"][2] + eh * 0.85)):
+                e["los"], e["frac"] = True, 0.85     # only the upper body shows over cover: shoot that
+            else:
+                e["los"] = False
         enemies.sort(key=lambda e: e["d"])
         visible = [e for e in enemies if e["los"]]
 
@@ -288,8 +322,14 @@ class Bot:
                 mv = (mv[0] * quiet, mv[1] * quiet)       # under 5 m/s makes no footstep sound
             mode = "hide"
         elif tgt is not None:
-            mv = self.duel_move(me, tgt, t, ffa)
-            mode = "fight"
+            if t - self.rear_t < 1.5 and self.rear_by != tgt["id"]:
+                b = self.rear_bearing
+                ghost = {"pos": [x + 80 * math.cos(b), y + 80 * math.sin(b), z], "los": True, "d": 80.0}
+                mv = self.retreat_dir(obs, me, visible + [ghost], t)
+                mode = "unflank"
+            else:
+                mv = self.duel_move(me, tgt, t, ffa)
+                mode = "fight"
         elif t - self.threat_t < 3.0 and self.threat_bearing is not None and not enemies:
             # being shot by something we cannot see: do not stand there. Break its line of fire.
             b = self.threat_bearing
@@ -299,7 +339,12 @@ class Bot:
         elif enemies and not ffa:
             # known but hidden: hold an angle on where it will appear rather than walking into it
             e = enemies[0]
-            if hp_frac > 0.7 and e["d"] > FIGHT_RANGE + 40:
+            if t - self.threat_t < 3.0:
+                if hp_frac > 0.55:
+                    mv = self.go(e["pos"][0], e["pos"][1], me, t)   # it can hit us and we cannot hit it: close in for a line
+                else:
+                    mv = self.retreat_dir(obs, me, enemies, t)
+            elif hp_frac > 0.7 and e["d"] > FIGHT_RANGE + 40:
                 mv = self.go(e["pos"][0], e["pos"][1], me, t)
             mode = "stalk"
         else:
@@ -320,6 +365,20 @@ class Bot:
             elif outside_next or final:
                 mv = self.zone_dir(obs, me)
                 mode = "zone"
+            elif FARM >= 2 and hp_frac >= 0.9 and not ffa and self.farm_memo:
+                # walk toward the nearest remembered crate or drone that is on the ground inside the next circle
+                best = None
+                for fid, (fpos, _h) in self.farm_memo.items():
+                    if abs(fpos[2] - self.arena.ground_at(fpos[0], fpos[1])) > 3.0:
+                        continue
+                    if math.hypot(fpos[0] - zc[0], fpos[1] - zc[1]) > zone["next_radius"] - 10:
+                        continue
+                    d = math.hypot(fpos[0] - x, fpos[1] - y)
+                    if d < 260 and (best is None or d < best[0]):
+                        best = (d, fpos)
+                if best is not None and (best[0] > 70 or not self.arena.los((x, y, z + 7.0), (best[1][0], best[1][1], best[1][2] + 1.5))):
+                    mv = self.go(best[1][0], best[1][1], me, t)
+                    mode = "farm"
         if final and not must_move and mode in ("idle", "stalk", "zone"):
             mv = self.go(zc[0], zc[1], me, t) if dz_next > 2.0 else (0.0, 0.0)
 
@@ -352,9 +411,9 @@ class Bot:
         else:
             farm = None
             under_fire = t - self.threat_t < 3.0 and self.threat_bearing is not None
-            if not under_fire and not survive and (not enemies or mode in ("idle", "cube", "loot", "zone")):
+            if not under_fire and not survive and (not enemies or mode in ("idle", "cube", "loot", "zone", "farm")):
                 cands = []
-                if hp_frac >= 0.97:   # dealing damage resets the 5 s regen timer: heal first, farm after
+                if FARM and hp_frac >= 0.97:   # dealing damage resets the 5 s regen timer: heal first, farm after
                     cands = [(math.dist(n["pos"], me["pos"]), n, 3.5) for n in npcs]
                     cands += [(math.dist(c["pos"], me["pos"]), c, 2.4) for c in obs["crates"]]
                 cands = [c for c in cands if c[0] < 110]
@@ -402,9 +461,9 @@ class Bot:
         rng_want = FIGHT_RANGE
         held = [w["kind"] for w in me["weapons"] if w]
         if "lightning" in held and me["energy"] > 30 and "laser" not in tgt.get("weapons", []):
-            rng_want = 36.0
+            rng_want = ZAP_RANGE
         if "laser" in held:
-            rng_want = 115.0
+            rng_want = LASER_RANGE
         radial = 0.0
         if d > rng_want + 12:
             radial = 0.8
