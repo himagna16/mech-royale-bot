@@ -40,7 +40,7 @@ RUSH = _env("MR_RUSH", 1.0) > 0
 BREAK_N = _env("MR_BREAKN", 5.0)          # break off on numbers alone only against this many attackers
 DODGE = _env("MR_DODGE", 1.0) > 0
 FFA_DEATHS = _env("MR_FFADEATHS", 4.0)    # deaths we did not cause before we believe it is a free-for-all
-FARM_HP = _env("MR_FARMHP", 0.8)
+FARM_HP = _env("MR_FARMHP", 0.5)
 PURSUE = _env("MR_PURSUE", 1.0) > 0
 DROPS = _env("MR_DROPS", 0.0)           # go for supply drops within this many metres (0 = only when idle)
 ZAP_RANGE = _env("MR_ZRANGE", 28.0)
