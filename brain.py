@@ -56,6 +56,7 @@ FFA_DEATHS = _env("MR_FFADEATHS", 4.0)    # deaths we did not cause before we be
 FARM_HP = _env("MR_FARMHP", 0.5)
 FFA_EVIDENCE = _env("MR_FFAEVID", 1.0) > 0
 FFA_STAND = _env("MR_FFASTAND", 1.0) > 0   # in a free-for-all, duel a lone attacker instead of running from it
+FFA_FIX = _env("MR_FFAFIX", 0.0) > 0       # free-for-all only: count unseen attackers, never stand still under fire
 FFA_TWO = _env("MR_FFATWO", 40.0)           # two attackers before this time and before our first kill => free-for-all (0 = off)
 FFA_EARLY = _env("MR_FFAEARLY", 4.0)       # any mech damage before this time => free-for-all (0 = off)
 HUNT = _env("MR_HUNT", 0.0) > 0            # when idle and healthy, walk to where a mech was last seen
@@ -495,7 +496,13 @@ class Bot:
         opening = OPEN_T > 0 and t < OPEN_T and not ffa
         # in those situations an enemy in view means "leave", unless it is on top of us or nearly dead
         winning = tgt is not None and tfrac < hp_frac - 0.2 and n_threat <= 1
-        stand = engaged and (tgt is not None) and (tgt["d"] < 45 or winning or (FFA_STAND and n_threat <= 1 and hp_frac > 0.45))
+        n_stand = n_threat
+        if FFA_FIX and ffa:
+            # a second mech hitting us from out of sight is a threat too (seen in real free-for-alls: shot in the back mid-duel)
+            ids = {e["id"] for e in visible if e["d"] < 170}
+            ids.update(i for i, ht in self.hit_by.items() if t - ht < 3.0)
+            n_stand = len(ids)
+        stand = engaged and (tgt is not None) and (tgt["d"] < 45 or winning or (FFA_STAND and n_stand <= 1 and hp_frac > 0.45))
         leave = (survive or opening) and tgt is not None and not stand
         cubes = [cp for cp in self.cube_memo.values()
                  if abs(cp[2] - self.arena.ground_at(cp[0], cp[1])) < 2.5 and math.hypot(cp[0] - zc[0], cp[1] - zc[1]) < zone["radius"] + 40]
@@ -532,10 +539,17 @@ class Bot:
             mode = "hide"
         elif tgt is not None:
             if not tgt["los"]:
+                mode = "pursue"
                 if PURSUE and not survive:
                     mv = self.go(tgt["pos"][0], tgt["pos"][1], me, t)     # it ducked behind something: go get a line on it
                     boost = any(k == "lightning" for k in held) and me["energy"] > 70 and tgt["d"] < 90
-                mode = "pursue"
+                elif FFA_FIX and survive and t - self.threat_t < 3.0 and self.threat_bearing is not None:
+                    # free-for-all, target out of sight, and something is still hitting us: break that line of fire
+                    b = self.threat_bearing
+                    ghost = {"pos": [x + 90 * math.cos(b), y + 90 * math.sin(b), z], "los": True, "d": 90.0}
+                    mv = self.retreat_dir(obs, me, [ghost] + list(visible), t)
+                    boost = me["energy"] > 20
+                    mode = "evade"
             else:
                 mv, boost = self.duel_move(obs, me, tgt, t)
                 mode = "fight"
