@@ -137,6 +137,7 @@ class Bot:
         self.enemy_last = {}     # mech id -> (x, y, t) last seen
         self.prev_vel = {}       # mech id -> (t, velocity) from the previous observation
         self.hit_by = {}         # mech id -> last time it damaged us
+        self.heard = None        # (t, bearing, distance class) of the last weapon noise
         self.memo_t = {}         # pickup / cube id -> last time we saw it
         self.tgt_id = None
         self.now = 0.0
@@ -345,6 +346,9 @@ class Bot:
             if ev["type"] in ("took", "take_failed") and ev.get("reason") in (None, "gone"):
                 self.pick_memo.pop(ev["id"], None)
 
+        for snd in obs["sounds"]:
+            if snd["kind"] in ("gun", "laser", "lightning", "mortar", "laser_charge", "crate") and snd.get("age", 0) < 0.3:
+                self.heard = (t, snd["bearing"], snd["dist"])
         if obs["offer"]:
             ids = [c["id"] for c in obs["offer"]["choices"]]
             order = UPGRADE_ORDER_B if UPG_B else UPGRADE_ORDER
@@ -576,6 +580,14 @@ class Bot:
                 _age, ex, ey = min(seen)
                 mv = self.go(ex, ey, me, t)
                 mode = "hunt"
+            elif self.heard is not None and t - self.heard[0] < 12.0:
+                # nobody seen lately: walk toward the last weapon noise (house bots shoot drones and crates)
+                _ht, hb, hd = self.heard
+                step = 45.0 if hd == "near" else (110.0 if hd == "mid" else 190.0)
+                hx_, hy_ = x + step * math.cos(hb), y + step * math.sin(hb)
+                if math.hypot(hx_ - zc[0], hy_ - zc[1]) < zone["radius"]:
+                    mv = self.go(hx_, hy_, me, t)
+                    mode = "hunt"
         if mode == "idle" and not ffa and ROAM and dz_next > zone["next_radius"] * 0.45 and hp_frac > 0.6:
             mv = self.zone_dir(obs, me)
             mode = "roam"
