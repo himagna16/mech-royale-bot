@@ -49,6 +49,7 @@ HUNT = _env("MR_HUNT", 0.0) > 0            # when idle and healthy, walk to wher
 PURSUE = _env("MR_PURSUE", 1.0) > 0
 CUBE_MEMORY = _env("MR_CUBEMEM", 40.0)
 ARMED_MIN = _env("MR_ARMEDMIN", 2.0)
+DODGE_FIGHT = _env("MR_DODGEFIGHT", 0.0) > 0  # in a duel, pick the best of nine directions against incoming shots
 DODGE_ALL = _env("MR_DODGEALL", 1.5)       # weight of the sidestep added to non-duel movement (0 = off)
 OPEN_T = _env("MR_OPENT", 0.0)             # seconds of cautious opening (0 = off)
 LASER_PREFIRE = _env("MR_LPREFIRE", 0.0)   # same anticipation for releasing the laser (0 = wait until lined up)
@@ -655,6 +656,61 @@ class Bot:
             return (-cx / miss, -cy / miss)            # step directly away from the line
         return (-vy / sp, vx / sp)                     # dead on: either side, pick the left
 
+    def best_dodge(self, obs, me, default):
+        """Among the default move and eight compass directions, the one that leaves incoming shots farthest
+        from us when they arrive. Returns `default` when nothing is coming or nothing is clearly better."""
+        x, y, z = me["pos"]
+        vx0, vy0 = me["vel"][0], me["vel"][1]
+        walk = me["stats"]["walk_speed"]
+        acc = me["stats"].get("ground_accel", 58.5)
+        threats = []
+        for p in obs["projectiles"]:
+            vx, vy = p["vel"][0], p["vel"][1]
+            sp2 = vx * vx + vy * vy
+            if sp2 < 1.0:
+                continue
+            tca = ((x - p["pos"][0]) * vx + (y - p["pos"][1]) * vy) / sp2
+            if tca < 0.04 or tca > (1.6 if p["kind"] == "mortar" else 0.75):
+                continue
+            cx, cy = p["pos"][0] + vx * tca - x, p["pos"][1] + vy * tca - y
+            reach = 11.0 if p["kind"] == "mortar" else 7.5
+            if cx * cx + cy * cy > reach * reach:
+                continue
+            sp = math.sqrt(sp2)
+            threats.append((tca, p["pos"][0] - x, p["pos"][1] - y, vx / sp, vy / sp, 8.0 if p["kind"] == "mortar" else 3.2))
+        if not threats:
+            return default
+
+        def worst(mvx, mvy):
+            w = 1e9
+            for tca, rx, ry, dx, dy, need in threats:
+                # where we are when the shot arrives, moving toward (mvx, mvy) under the acceleration limit
+                tvx, tvy = mvx * walk, mvy * walk
+                dvx, dvy = tvx - vx0, tvy - vy0
+                dv = math.hypot(dvx, dvy)
+                ta = min(tca, dv / acc) if dv > 1e-6 else 0.0
+                f = (ta * acc / dv) if dv > 1e-6 else 0.0
+                px = vx0 * ta + 0.5 * dvx * f * ta + (vx0 + dvx * f) * (tca - ta)
+                py = vy0 * ta + 0.5 * dvy * f * ta + (vy0 + dvy * f) * (tca - ta)
+                # distance from that point to the shot's line
+                qx, qy = px - rx, py - ry
+                miss = abs(qx * dy - qy * dx)
+                w = min(w, miss / need)
+            return min(w, 2.0)
+
+        n0 = math.hypot(default[0], default[1])
+        base = worst(default[0] / n0, default[1] / n0) if n0 > 1e-6 else worst(0.0, 0.0)
+        best, bmv = base + 0.15, default
+        for k in range(8):
+            a = k * TAU / 8
+            mx, my = math.cos(a), math.sin(a)
+            if self.arena.blocked(x + mx * 4.0, y + my * 4.0, z):
+                continue
+            sc = worst(mx, my)
+            if sc > best:
+                best, bmv = sc, (mx, my)
+        return bmv
+
     def dodge_sign(self, obs, me, ux, uy):
         """Which way to sidestep (+1 / -1 along the left-hand perpendicular of the target bearing) so that
         incoming shots pass as far from us as possible; None if nothing is about to arrive."""
@@ -739,6 +795,8 @@ class Bot:
             if self.open_dir(me, mv):
                 if sgn != self.strafe:
                     self.strafe = sgn
+                if DODGE_FIGHT and obs["projectiles"]:
+                    mv = self.best_dodge(obs, me, mv)
                 return mv, boost
         return (ux * radial, uy * radial), boost
 
