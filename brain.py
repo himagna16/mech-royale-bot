@@ -31,7 +31,7 @@ def _env(name, default):
 
 
 FIGHT_RANGE = _env("MR_RANGE", 72.0)      # preferred duel distance (m)
-RETREAT_HP = _env("MR_RETREAT", 0.35)     # break contact below this health fraction
+RETREAT_HP = _env("MR_RETREAT", 0.42)     # break contact below this health fraction
 REJOIN_HP = _env("MR_REJOIN", 0.9)       # ... and come back above this one
 ZONE_MARGIN = 18.0
 FARM = _env("MR_FARM", 2.0)
@@ -56,7 +56,7 @@ PURSUE = _env("MR_PURSUE", 1.0) > 0
 CUBE_MEMORY = _env("MR_CUBEMEM", 40.0)
 ARMED_MIN = _env("MR_ARMEDMIN", 2.0)
 ANTI_ZAP = _env("MR_ANTIZAP", 0.0)         # preferred distance from a mech carrying lightning when we have none (0 = off)
-LASER_COVER = _env("MR_LASERCOVER", 0.0)   # reach (m) to search for cover from a charged laser aimed at us (0 = off)
+LASER_COVER = _env("MR_LASERCOVER", 14.0)   # reach (m) to search for cover from a charged laser aimed at us (0 = off)
 HEAL_TO = _env("MR_HEALTO", 0.6)            # with nobody in sight, leave cover once health is back above this
 UPG_B = _env("MR_UPGB", 0.0) > 0            # alternative upgrade order (repair and speed earlier)
 DODGE_FIGHT = _env("MR_DODGEFIGHT", 0.0) > 0  # in a duel, pick the best of nine directions against incoming shots
