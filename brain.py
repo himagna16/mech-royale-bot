@@ -56,6 +56,7 @@ HUNT = _env("MR_HUNT", 0.0) > 0            # when idle and healthy, walk to wher
 PURSUE = _env("MR_PURSUE", 1.0) > 0
 CUBE_MEMORY = _env("MR_CUBEMEM", 40.0)
 ARMED_MIN = _env("MR_ARMEDMIN", 2.0)
+LASER_PULL = _env("MR_LASERPULL", 0.0)      # extra metres we will walk for a laser, and keep seeking one while holding lightning (0 = off)
 CUBE_REACH = _env("MR_CUBEREACH", 150.0)    # how far to walk for a remembered cube when nobody is in sight
 ZAP_CLOSE = _env("MR_ZAPCLOSE", 1.0) > 0    # close to arc range when holding lightning (0 = keep the other weapon's range)
 UNFLANK = _env("MR_UNFLANK", 0.0)           # weight of backing away from the group when hit in the back mid-duel (0 = off)
@@ -414,7 +415,7 @@ class Bot:
             if kind in held or WEAPON_RANK.get(kind, 0) <= low_rank:
                 continue
             d = math.hypot(pos[0] - x, pos[1] - y)
-            score = d - 25 * WEAPON_RANK[kind]
+            score = d - 25 * WEAPON_RANK[kind] - (LASER_PULL if kind == "laser" else 0.0)
             if abs(pos[2] - self.arena.ground_at(pos[0], pos[1])) > 2.0:
                 continue  # on a roof: skip for now
             if want is None or score < want[0]:
@@ -529,7 +530,7 @@ class Bot:
                             mode = "unflank"
             if not survive and tgt["d"] > 40:
                 # the economy keeps running during a fight: step onto nearby weapons and cubes while shooting
-                if want and want[4] < (GRAB if not armed else 35.0):
+                if want and want[4] < (GRAB if (not armed or (LASER_PULL and want[2] == "laser")) else 35.0):
                     mv = self.go(want[3][0], want[3][1], me, t)
                     mode = "grab"
                 elif cube and cube_d < (70.0 if hp_frac > 0.5 else 35.0):
@@ -546,7 +547,7 @@ class Bot:
             # nobody in sight: weapons, cubes, drops, then drones and crates, drifting toward the next circle
             drop = next((d for d in obs["drops"] if d["lands_in"] < 12 and d.get("holder") in (None, me["id"])
                          and math.hypot(d["pos"][0] - zc[0], d["pos"][1] - zc[1]) < zone["next_radius"]), None)
-            if want and want[4] < (230.0 if not armed else 90.0) and hp_frac > 0.4:
+            if want and want[4] < (230.0 if (not armed or (LASER_PULL and want[2] == "laser")) else 90.0) and hp_frac > 0.4:
                 mv = self.go(want[3][0], want[3][1], me, t)
                 mode = "loot"
                 # sprint for the first real weapon: everything else in the match goes better with one
