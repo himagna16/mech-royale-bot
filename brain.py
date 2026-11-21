@@ -48,6 +48,9 @@ CUBE_MEMORY = _env("MR_CUBEMEM", 40.0)
 ARMED_MIN = _env("MR_ARMEDMIN", 2.0)
 DODGE_ALL = _env("MR_DODGEALL", 0.9)       # weight of the sidestep added to non-duel movement (0 = off)
 OPEN_T = _env("MR_OPENT", 0.0)             # seconds of cautious opening (0 = off)
+LASER_PREFIRE = _env("MR_LPREFIRE", 0.0)   # same anticipation for releasing the laser (0 = wait until lined up)
+LASER_TOL = _env("MR_LTOL", 0.75)          # how close to centre the beam must point, in target radii
+JUKE = _env("MR_JUKE", 1.0)                # scales the time between strafe reversals
 PREFIRE = _env("MR_PREFIRE", 1.0)          # ticks of torso swing to anticipate when firing the gun (0 = off)
 SALT = _env("MR_SALT", 0.0)               # reshuffles our random strafing without changing behaviour
 PICK_MEMORY = _env("MR_PICKMEM", 75.0)
@@ -687,7 +690,7 @@ class Bot:
         if t >= self.strafe_until:
             if self.rng.random() < 0.65:
                 self.strafe = -self.strafe
-            self.strafe_until = t + self.rng.uniform(0.3, 0.9)
+            self.strafe_until = t + self.rng.uniform(0.3, 0.9) * JUKE
         rng_want = FIGHT_RANGE
         held = [w["kind"] for w in me["weapons"] if w]
         boost = False
@@ -816,7 +819,9 @@ class Bot:
                 aim = [dyaw, dpitch]
                 full = charge >= ls["charge"] - 0.05
                 up_tol = 1.8 if tgt.get("frac", 0.5) > 0.6 else 3.5     # only shoulders showing: do not sail over its head
-                lined = abs(wrap(dyaw - cur_yaw)) < math.atan2(r * 0.75, ddist) and abs(dpitch - cur_pitch) < math.atan2(up_tol, ddist)
+                lswing = st.get("turn_rate", 4.0) * 0.05 * LASER_PREFIRE
+                lined = max(0.0, abs(wrap(dyaw - cur_yaw)) - lswing) < math.atan2(r * LASER_TOL, ddist) and \
+                    max(0.0, abs(dpitch - cur_pitch) - st.get("pitch_rate", 3.0) * 0.05 * LASER_PREFIRE) < math.atan2(up_tol, ddist)
                 fire[las_i] = not (full and lined and self.arena.los(muzzle, dpt))
         if lit_i is not None:
             w = slots[lit_i]
