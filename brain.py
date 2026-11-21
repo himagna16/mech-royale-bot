@@ -36,6 +36,7 @@ ROAM = _env("MR_ROAM", 1.0) > 0
 BUNKER = _env("MR_BUNKER", 0.0) > 0        # hold a tucked-away spot and make hunters come to us
 BUNKER_LEASH = _env("MR_LEASH", 16.0)
 GRAB = _env("MR_GRAB", 70.0)
+RUSH = _env("MR_RUSH", 1.0) > 0
 ZAP_RANGE = _env("MR_ZRANGE", 36.0)
 LATENCY = _env("MR_LAT", 0.1)
 ACCEL_LEAD = _env("MR_ALEAD", 0.5)
@@ -431,6 +432,8 @@ class Bot:
             elif want and want[4] < (140 if bunker and min(ranks) > 0 else 230) and hp_frac > 0.4:
                 mv = self.go(want[3][0], want[3][1], me, t)
                 mode = "loot"
+                # sprint for the first real weapon: everything else in the match goes better with one
+                boost = RUSH and max(ranks) <= 0 and me["energy"] > 25 and want[4] > 15
             elif drop and hp_frac > 0.5 and not ffa and math.hypot(drop["pos"][0] - x, drop["pos"][1] - y) < 220:
                 mv = self.go(drop["pos"][0], drop["pos"][1], me, t)
                 mode = "drop"
@@ -543,12 +546,15 @@ class Bot:
                 self.zapping = False
                 rng_want = LASER_RANGE if "laser" in held else FIGHT_RANGE
         radial = 0.0
+        side = 1.0
         if d > rng_want + 12:
             radial = 0.8
+            if rng_want == ZAP_RANGE:
+                radial, side = 1.0, 0.45     # close the gap quickly: arcs only reach 45 m
         elif d < rng_want - 20:
             radial = -0.8
         for s in (self.strafe, -self.strafe):
-            mv = (ux * radial - uy * s, uy * radial + ux * s)
+            mv = (ux * radial - uy * s * side, uy * radial + ux * s * side)
             n = math.hypot(mv[0], mv[1])
             mv = (mv[0] / n, mv[1] / n)
             if self.open_dir(me, mv):
