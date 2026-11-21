@@ -55,6 +55,8 @@ HUNT = _env("MR_HUNT", 0.0) > 0            # when idle and healthy, walk to wher
 PURSUE = _env("MR_PURSUE", 1.0) > 0
 CUBE_MEMORY = _env("MR_CUBEMEM", 40.0)
 ARMED_MIN = _env("MR_ARMEDMIN", 2.0)
+ANTI_ZAP = _env("MR_ANTIZAP", 0.0)         # preferred distance from a mech carrying lightning when we have none (0 = off)
+LASER_COVER = _env("MR_LASERCOVER", 0.0)   # reach (m) to search for cover from a charged laser aimed at us (0 = off)
 HEAL_TO = _env("MR_HEALTO", 0.6)            # with nobody in sight, leave cover once health is back above this
 UPG_B = _env("MR_UPGB", 0.0) > 0            # alternative upgrade order (repair and speed earlier)
 DODGE_FIGHT = _env("MR_DODGEFIGHT", 0.0) > 0  # in a duel, pick the best of nine directions against incoming shots
@@ -563,6 +565,38 @@ class Bot:
         if final and not must_move and mode in ("idle", "zone", "roam"):
             mv = self.go(zc[0], zc[1], me, t) if dz_next > 2.0 else (0.0, 0.0)
 
+        # ---- a charged laser lined up on us cannot be sidestepped: put a wall in its way if one is close
+        if LASER_COVER and mode not in ("hide", "idle"):
+            for e in enemies:
+                if not e.get("charging") or not e.get("los"):
+                    continue
+                back = math.atan2(y - e["pos"][1], x - e["pos"][0])
+                if abs(wrap(back - e["aim"][0])) > 0.3:
+                    continue
+                emz = (e["pos"][0], e["pos"][1], e["pos"][2] + 7.0)
+                bestc = None
+                for r in (5.0, 9.0, LASER_COVER):
+                    for k in range(12):
+                        a = k * TAU / 12
+                        px, py = x + r * math.cos(a), y + r * math.sin(a)
+                        g = self.arena.ground_at(px, py)
+                        if self.arena.blocked(px, py, g) or abs(g - z) > 2.5:
+                            continue
+                        if self.arena.los(emz, (px, py, g + 4.5)) or self.arena.los(emz, (px, py, g + 8.0)):
+                            continue
+                        if not self.nav._clear(x, y, px, py):
+                            continue
+                        if bestc is None or r < bestc[0]:
+                            bestc = (r, px, py)
+                    if bestc is not None:
+                        break
+                if bestc is not None:
+                    dd = math.hypot(bestc[1] - x, bestc[2] - y)
+                    mv = ((bestc[1] - x) / dd, (bestc[2] - y) / dd)
+                    boost = boost or me["energy"] > 20
+                    mode = "duck"
+                break
+
         # ---- shots on the way: sidestep them whatever else we are doing
         if DODGE_ALL and mode not in ("fight", "hide", "idle") and obs["projectiles"]:
             side = self.sidestep(obs, me)
@@ -778,6 +812,8 @@ class Bot:
                 boost = me["energy"] > 70 and 45 < d < 90
             else:
                 self.zapping = False
+        if ANTI_ZAP and "lightning" in tgt.get("weapons", []) and "lightning" not in held:
+            rng_want = max(rng_want, ANTI_ZAP)       # arcs reach 45 m and never miss: stay outside
         radial = 0.0
         side = 1.0
         if d > rng_want + 15:
@@ -786,6 +822,8 @@ class Bot:
                 radial, side = 1.0, 0.45     # close the gap quickly: arcs only reach 45 m
         elif d < rng_want - 15:
             radial = -0.7
+            if ANTI_ZAP and "lightning" in tgt.get("weapons", []) and "lightning" not in held and d < 58:
+                radial, side = -1.0, 0.5
         if DODGE:
             sgn = self.dodge_sign(obs, me, ux, uy)
             if sgn is not None:
