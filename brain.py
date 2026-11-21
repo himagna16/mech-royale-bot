@@ -9,7 +9,7 @@ from geom import Arena
 from nav import Nav
 
 TAU = 2 * math.pi
-WEAPON_RANK = {"laser": 3, "lightning": 3, "mortar": 1, "gun": 0}
+WEAPON_RANK = {"laser": 3.2, "lightning": 2.5, "mortar": 1, "gun": 0}
 UPGRADE_ORDER = [
     "plating", "armor", "nanites", "lightning_efficiency", "laser_damage", "laser_charge", "reactor", "capacitor",
     "lightning_chain", "lightning_range", "gun_damage", "servos", "gun_mag", "gun_velocity", "laser_pierce",
@@ -24,20 +24,26 @@ def _env(name, default):
         return default
 
 
-FIGHT_RANGE = _env("MR_RANGE", 85.0)      # preferred duel distance (m)
-RETREAT_HP = _env("MR_RETREAT", 0.38)     # break contact below this health fraction
-REJOIN_HP = _env("MR_REJOIN", 0.85)       # ... and come back above this one
+FIGHT_RANGE = _env("MR_RANGE", 72.0)      # preferred duel distance (m)
+RETREAT_HP = _env("MR_RETREAT", 0.35)     # break contact below this health fraction
+REJOIN_HP = _env("MR_REJOIN", 0.9)       # ... and come back above this one
 ZONE_MARGIN = 18.0
 FARM = _env("MR_FARM", 2.0)
-SWAP_GUN = _env("MR_SWAPGUN", 1.0) > 0     # replace the starting gun once we can carry laser + lightning
-LASER_RANGE = _env("MR_LRANGE", 115.0)
-ANGLE = _env("MR_ANGLE", 1.0) > 0
+SWAP_GUN = _env("MR_SWAPGUN", 0.0) > 0     # replace the starting gun once we can carry laser + lightning
+LASER_RANGE = _env("MR_LRANGE", 110.0)
+ANGLE = _env("MR_ANGLE", 0.0) > 0
 ROAM = _env("MR_ROAM", 1.0) > 0
 BUNKER = _env("MR_BUNKER", 0.0) > 0        # hold a tucked-away spot and make hunters come to us
 BUNKER_LEASH = _env("MR_LEASH", 16.0)
 GRAB = _env("MR_GRAB", 70.0)
 RUSH = _env("MR_RUSH", 1.0) > 0
-ZAP_RANGE = _env("MR_ZRANGE", 36.0)
+BREAK_N = _env("MR_BREAKN", 5.0)          # break off on numbers alone only against this many attackers
+DODGE = _env("MR_DODGE", 1.0) > 0
+FFA_DEATHS = _env("MR_FFADEATHS", 4.0)    # deaths we did not cause before we believe it is a free-for-all
+FARM_HP = _env("MR_FARMHP", 0.8)
+PURSUE = _env("MR_PURSUE", 1.0) > 0
+DROPS = _env("MR_DROPS", 0.0)           # go for supply drops within this many metres (0 = only when idle)
+ZAP_RANGE = _env("MR_ZRANGE", 28.0)
 LATENCY = _env("MR_LAT", 0.1)
 ACCEL_LEAD = _env("MR_ALEAD", 0.5)
 
@@ -100,6 +106,8 @@ class Bot:
         self.zapping = False
         self.ffa_latched = False
         self.prev_vel = {}       # mech id -> (t, velocity) from the previous observation
+        self.hit_by = {}         # mech id -> last time it damaged us
+        self.tgt_id = None
         self.now = 0.0
         self.my_kills = 0
         self.deaths_seen = 0
@@ -253,13 +261,15 @@ class Bot:
                 self.rear_t, self.rear_bearing, self.rear_by = t, ev["bearing"], ev.get("by")
             if ev["type"] == "damaged" and ev.get("bearing") is not None:
                 self.threat_bearing, self.threat_t = ev["bearing"], t
+                if isinstance(ev.get("by"), int) and ev["by"] < 100:
+                    self.hit_by[ev["by"]] = t
             elif ev["type"] == "kill":
                 self.my_kills += 1
         if self.last_alive is not None and obs["alive"] < self.last_alive:
             self.deaths_seen += self.last_alive - obs["alive"]
         self.last_alive = obs["alive"]
         other_deaths = self.deaths_seen - self.my_kills
-        if other_deaths >= (1 if t < 75 else 2 if t < 160 else 3):
+        if other_deaths >= FFA_DEATHS or (other_deaths >= 3 and t < 60):
             self.ffa_latched = True      # others are dying without us: a free-for-all, not the practice squad
         ffa = self.ffa_latched
         for p in obs["pickups"]:
@@ -340,18 +350,28 @@ class Bot:
         need = (dz_next - (zone["next_radius"] - margin)) / (st["walk_speed"] * 0.8)
         must_move = (outside_next and need > time_left - 12) or not me["in_zone"]
 
-        # ---- choose a target and stance
-        tgt = visible[0] if visible else None
-        if tgt is not None and len(visible) > 1:
-            # prefer the one we can finish, then the nearest
-            tgt = min(visible, key=lambda e: e["d"] + 0.08 * e.get("hp", 1400))
-        n_threat = len([e for e in visible if e["d"] < 160])
-        if hp_frac < RETREAT_HP or (n_threat >= 3 and hp_frac < 0.7):
+        # ---- choose a target: stay on the same mech, answer whoever is hitting us, prefer weak and near
+        tgt, best = None, None
+        for e in enemies:
+            sc = e["d"] + 60.0 * e.get("hp", 1400) / max(e.get("max_hp", 1400), 1) + (0.0 if e["los"] else 45.0)
+            if t - self.hit_by.get(e["id"], -100.0) < 3.0:
+                sc -= 45.0
+            if e["id"] == self.tgt_id:
+                sc -= 35.0
+            if best is None or sc < best:
+                best, tgt = sc, e
+        self.tgt_id = tgt["id"] if tgt is not None else None
+        n_threat = len([e for e in visible if e["d"] < 170])
+        tfrac = tgt.get("hp", 1400) / max(tgt.get("max_hp", 1400), 1) if tgt is not None else 1.0
+        losing = (hp_frac < RETREAT_HP and (tgt is None or tfrac > hp_frac + 0.1)) or (n_threat >= 2 and hp_frac < 0.5) \
+            or (n_threat >= BREAK_N and hp_frac < 0.75)
+        finishing = tgt is not None and tgt["los"] and tfrac < 0.2 and hp_frac > 0.2 and n_threat <= 2
+        if finishing:
+            self.retreating = False      # never walk away from a kill
+        elif losing:
             self.retreating = True
-        elif hp_frac > REJOIN_HP or (not enemies and hp_frac > 0.6):
+        elif hp_frac > REJOIN_HP or (not enemies and hp_frac > 0.6 and t - self.threat_t > 6.0):
             self.retreating = False
-        if tgt is not None and tgt.get("hp", 9999) < me["hp"] * 0.5 and n_threat <= 1:
-            self.retreating = False  # we win this trade: finish it
 
         mv = (0.0, 0.0)
         boost = False
@@ -360,16 +380,25 @@ class Bot:
         late = obs["alive"] <= 3 or zone["next_radius"] <= 30
         engaged = t - self.threat_t < 4.0 or (tgt is not None and tgt["d"] < 65)
         survive = ffa and not late     # free-for-all: placement only, so stay out of other people's fights
+        cubes = [cp for cp in self.cube_memo.values()
+                 if abs(cp[2] - self.arena.ground_at(cp[0], cp[1])) < 2.5 and math.hypot(cp[0] - zc[0], cp[1] - zc[1]) < zone["radius"] + 40]
+        cube = min(cubes, key=lambda c: math.hypot(c[0] - x, c[1] - y), default=None)
+        cube_d = math.hypot(cube[0] - x, cube[1] - y) if cube else 1e9
+        armed = max(ranks) > 0
         if must_move:
             mv = self.zone_dir(obs, me)
             boost = not me["in_zone"] and me["energy"] > 5
             mode = "zone"
-        elif self.retreating and enemies:
-            mv = self.retreat_dir(obs, me, enemies, t)
+        elif self.retreating and (enemies or t - self.threat_t < 6.0):
+            if enemies:
+                mv = self.retreat_dir(obs, me, enemies, t)
+            elif self.threat_bearing is not None:
+                b = self.threat_bearing
+                mv = self.retreat_dir(obs, me, [{"pos": [x + 90 * math.cos(b), y + 90 * math.sin(b), z], "los": True, "d": 90.0}], t)
             boost = me["energy"] > 25 and any(e["los"] and e["d"] < 120 for e in enemies)
             mode = "retreat"
         elif survive and tgt is not None and not engaged:
-            mv = self.retreat_dir(obs, me, visible, t)   # seen someone who is not on us yet: slip out of sight
+            mv = self.retreat_dir(obs, me, visible or enemies, t)   # seen someone who is not on us yet: slip out of sight
             hold_fire = True
             mode = "slip"
         elif survive and tgt is None and t - self.threat_t >= 4.0:
@@ -380,89 +409,65 @@ class Bot:
                 mv = (mv[0] * quiet, mv[1] * quiet)       # under 5 m/s makes no footstep sound
             mode = "hide"
         elif tgt is not None:
-            if t - self.rear_t < 1.5 and self.rear_by != tgt["id"]:
-                b = self.rear_bearing
-                ghost = {"pos": [x + 80 * math.cos(b), y + 80 * math.sin(b), z], "los": True, "d": 80.0}
-                mv = self.retreat_dir(obs, me, visible + [ghost], t)
-                mode = "unflank"
-            elif ANGLE and len(visible) >= 2:
-                mv = self.angle_dir(me, tgt, visible, t)
-                mode = "angle"
-                if mv is None:
-                    mv = self.duel_move(me, tgt, t, ffa)
-                    mode = "fight"
+            if not tgt["los"]:
+                if PURSUE and not survive:
+                    mv = self.go(tgt["pos"][0], tgt["pos"][1], me, t)     # it ducked behind something: go get a line on it
+                    boost = any(k == "lightning" for k in held) and me["energy"] > 70 and tgt["d"] < 90
+                mode = "pursue"
             else:
-                mv = self.duel_move(me, tgt, t, ffa)
+                mv, boost = self.duel_move(obs, me, tgt, t)
                 mode = "fight"
-            if BUNKER and not ffa and mode == "fight" and tgt["d"] > 40:
-                bx, by = self.hide_spot(obs, me, t)
-                if math.hypot(bx - x, by - y) > BUNKER_LEASH:
-                    mv = self.go(bx, by, me, t)       # shoot on the way back to the pocket
-                    mode = "hold"
-            if GRAB and max(ranks) <= 0 and want and want[4] < GRAB and tgt["d"] > 45 and mode in ("fight", "angle", "hold"):
-                mv = self.go(want[3][0], want[3][1], me, t)   # keep shooting, but walk onto the weapon
-                mode = "grab"
-        elif t - self.threat_t < 3.0 and self.threat_bearing is not None and not enemies:
+            if not survive and tgt["d"] > 40:
+                # the economy keeps running during a fight: step onto nearby weapons and cubes while shooting
+                if want and want[4] < (GRAB if not armed else 35.0):
+                    mv = self.go(want[3][0], want[3][1], me, t)
+                    mode = "grab"
+                elif cube and cube_d < (70.0 if hp_frac > 0.5 else 35.0):
+                    mv = self.go(cube[0], cube[1], me, t)
+                    mode = "snack"
+        elif t - self.threat_t < 3.0 and self.threat_bearing is not None:
             # being shot by something we cannot see: do not stand there. Break its line of fire.
             b = self.threat_bearing
             ghost = {"pos": [x + 90 * math.cos(b), y + 90 * math.sin(b), z], "los": True, "d": 90.0}
             mv = self.retreat_dir(obs, me, [ghost], t)
             mode = "evade"
-        elif enemies and not ffa:
-            # known but hidden: hold an angle on where it will appear rather than walking into it
-            e = enemies[0]
-            if t - self.threat_t < 3.0:
-                if hp_frac > 0.55:
-                    mv = self.go(e["pos"][0], e["pos"][1], me, t)   # it can hit us and we cannot hit it: close in for a line
-                else:
-                    mv = self.retreat_dir(obs, me, enemies, t)
-            elif hp_frac > 0.7 and e["d"] > FIGHT_RANGE + 40:
-                mv = self.go(e["pos"][0], e["pos"][1], me, t)
-            mode = "stalk"
         else:
-            # nobody around: heal first, then loot, then drift to the next circle
-            cubes = [{"pos": cp} for cp in self.cube_memo.values()
-                     if abs(cp[2] - self.arena.ground_at(cp[0], cp[1])) < 2.5 and math.hypot(cp[0] - zc[0], cp[1] - zc[1]) < zone["radius"] + 40]
-            cube = min(cubes, key=lambda c: math.dist(c["pos"][:2], (x, y)), default=None)
-            drop = next((d for d in obs["drops"] if d["lands_in"] < 12 and math.hypot(d["pos"][0] - zc[0], d["pos"][1] - zc[1]) < zone["next_radius"]), None)
-            bunker = BUNKER and not ffa
-            if cube and math.dist(cube["pos"][:2], (x, y)) < (90 if bunker else 170):
-                mv = self.go(cube["pos"][0], cube["pos"][1], me, t)
-                mode = "cube"
-            elif want and want[4] < (140 if bunker and min(ranks) > 0 else 230) and hp_frac > 0.4:
+            # nobody in sight: weapons, cubes, drops, then drones and crates, drifting toward the next circle
+            drop = next((d for d in obs["drops"] if d["lands_in"] < 12 and d.get("holder") in (None, me["id"])
+                         and math.hypot(d["pos"][0] - zc[0], d["pos"][1] - zc[1]) < zone["next_radius"]), None)
+            if want and want[4] < (230.0 if not armed else 90.0) and hp_frac > 0.4:
                 mv = self.go(want[3][0], want[3][1], me, t)
                 mode = "loot"
                 # sprint for the first real weapon: everything else in the match goes better with one
-                boost = RUSH and max(ranks) <= 0 and me["energy"] > 25 and want[4] > 15
-            elif drop and hp_frac > 0.5 and not ffa and math.hypot(drop["pos"][0] - x, drop["pos"][1] - y) < 220:
-                mv = self.go(drop["pos"][0], drop["pos"][1], me, t)
+                boost = RUSH and not armed and me["energy"] > 25 and want[4] > 15
+            elif cube and cube_d < 150:
+                mv = self.go(cube[0], cube[1], me, t)
+                mode = "cube"
+            elif drop and hp_frac > 0.4 and not ffa and math.hypot(drop["pos"][0] - x, drop["pos"][1] - y) < 220:
+                if math.hypot(drop["pos"][0] - x, drop["pos"][1] - y) > 3.0:
+                    mv = self.go(drop["pos"][0], drop["pos"][1], me, t)
                 mode = "drop"
             elif outside_next or final:
                 mv = self.zone_dir(obs, me)
                 mode = "zone"
-            elif bunker:
-                bx, by = self.hide_spot(obs, me, t)
-                if math.hypot(bx - x, by - y) > 4.0:
-                    mv = self.go(bx, by, me, t)
-                mode = "bunker"
-            elif FARM >= 2 and hp_frac >= 0.9 and not ffa and self.farm_memo:
+            elif FARM >= 2 and hp_frac >= 0.5 and not ffa and self.farm_memo:
                 # walk toward the nearest remembered crate or drone that is on the ground inside the next circle
-                best = None
-                for fid, (fpos, _h) in self.farm_memo.items():
+                bestf = None
+                for fid, (fpos, fh) in self.farm_memo.items():
                     if abs(fpos[2] - self.arena.ground_at(fpos[0], fpos[1])) > 3.0:
                         continue
                     if math.hypot(fpos[0] - zc[0], fpos[1] - zc[1]) > zone["next_radius"] - 10:
                         continue
                     d = math.hypot(fpos[0] - x, fpos[1] - y)
-                    if d < 260 and (best is None or d < best[0]):
-                        best = (d, fpos)
-                if best is not None and (best[0] > 70 or not self.arena.los((x, y, z + 7.0), (best[1][0], best[1][1], best[1][2] + 1.5))):
-                    mv = self.go(best[1][0], best[1][1], me, t)
+                    if d < (170 if fh > 3 else 150) and (bestf is None or d < bestf[0]):
+                        bestf = (d, fpos)
+                if bestf is not None and (bestf[0] > 70 or not self.arena.los((x, y, z + 7.0), (bestf[1][0], bestf[1][1], bestf[1][2] + 1.5))):
+                    mv = self.go(bestf[1][0], bestf[1][1], me, t)
                     mode = "farm"
-        if mode == "idle" and not ffa and ROAM and not BUNKER and dz_next > zone["next_radius"] * 0.45 and hp_frac > 0.6:
+        if mode == "idle" and not ffa and ROAM and dz_next > zone["next_radius"] * 0.45 and hp_frac > 0.6:
             mv = self.zone_dir(obs, me)
             mode = "roam"
-        if final and not must_move and mode in ("idle", "stalk", "zone", "roam", "bunker"):
+        if final and not must_move and mode in ("idle", "zone", "roam"):
             mv = self.go(zc[0], zc[1], me, t) if dz_next > 2.0 else (0.0, 0.0)
 
         # ---- stuck recovery
@@ -494,9 +499,9 @@ class Bot:
         else:
             farm = None
             under_fire = t - self.threat_t < 3.0 and self.threat_bearing is not None
-            if not under_fire and not survive and (not enemies or mode in ("idle", "cube", "loot", "zone", "farm", "roam", "bunker")):
+            if not under_fire and not survive and not enemies:
                 cands = []
-                if FARM and hp_frac >= 0.97:   # dealing damage resets the 5 s regen timer: heal first, farm after
+                if FARM and hp_frac >= FARM_HP:   # dealing damage resets the 5 s regen timer: heal first, farm after
                     cands = [(math.dist(n["pos"], me["pos"]), n, 3.5) for n in npcs]
                     cands += [(math.dist(c["pos"], me["pos"]), c, 2.4) for c in obs["crates"]]
                 cands = [c for c in cands if c[0] < 110]
@@ -518,6 +523,10 @@ class Bot:
             gun = next((w for w in slots if w and w["kind"] == "gun"), None)
             if gun and gun["ammo"] < gun["stats"]["mag"] and gun["reload"] <= 0 and not any(fire):
                 act["reload"] = True
+        if tgt is None:
+            for i, w in enumerate(slots):
+                if w and w["kind"] == "laser" and 0 < w.get("charge", 0) < w["stats"]["charge"] + 1.5 and not any(fire):
+                    fire[i] = True       # hold the charge: letting go would fire it at nothing
         if aim is not None:
             act["aim"] = [float(aim[0]), float(aim[1])]
         act["fire"] = [bool(fire[0]), bool(fire[1])]
@@ -525,7 +534,45 @@ class Bot:
         return act
 
     # ------------------------------------------------------------------ behaviours
-    def duel_move(self, me, tgt, t, ffa):
+    def dodge_sign(self, obs, me, ux, uy):
+        """Which way to sidestep (+1 / -1 along the left-hand perpendicular of the target bearing) so that
+        incoming shots pass as far from us as possible; None if nothing is about to arrive."""
+        x, y, _ = me["pos"]
+        px_, py_ = -uy, ux
+        v_lat = me["vel"][0] * px_ + me["vel"][1] * py_
+        walk = me["stats"]["walk_speed"]
+        acc = me["stats"].get("ground_accel", 58.5)
+        threats = []
+        for p in obs["projectiles"]:
+            vx, vy = p["vel"][0], p["vel"][1]
+            sp2 = vx * vx + vy * vy
+            if sp2 < 1.0:
+                continue
+            rx, ry = x - p["pos"][0], y - p["pos"][1]
+            tca = (rx * vx + ry * vy) / sp2
+            if tca < 0.04 or tca > (1.6 if p["kind"] == "mortar" else 0.75):
+                continue
+            cx, cy = p["pos"][0] + vx * tca - x, p["pos"][1] + vy * tca - y
+            reach = 10.0 if p["kind"] == "mortar" else 7.0
+            if cx * cx + cy * cy > reach * reach:
+                continue
+            threats.append((tca, cx * px_ + cy * py_, cx * ux + cy * uy))
+        if not threats:
+            return None
+        best = None
+        for sgn in (1.0, -1.0):
+            worst = 1e9
+            for tca, clat, clon in threats:
+                dv = sgn * walk - v_lat
+                ta = min(tca, abs(dv) / acc)
+                lat = v_lat * ta + 0.5 * math.copysign(acc, dv) * ta * ta + sgn * walk * (tca - ta)
+                worst = min(worst, math.hypot(lat - clat, clon))
+            if best is None or worst > best[0]:
+                best = (worst, sgn)
+        return best[1]
+
+    def duel_move(self, obs, me, tgt, t):
+        """Strafe at the range our weapons like. Returns (move, boost)."""
         x, y, _ = me["pos"]
         dx, dy = tgt["pos"][0] - x, tgt["pos"][1] - y
         d = math.hypot(dx, dy) or 1.0
@@ -533,35 +580,46 @@ class Bot:
         if t >= self.strafe_until:
             if self.rng.random() < 0.65:
                 self.strafe = -self.strafe
-            self.strafe_until = t + self.rng.uniform(0.25, 0.75)
+            self.strafe_until = t + self.rng.uniform(0.3, 0.9)
         rng_want = FIGHT_RANGE
         held = [w["kind"] for w in me["weapons"] if w]
+        boost = False
         if "laser" in held:
             rng_want = LASER_RANGE
         if "lightning" in held:
-            # brawl inside arc range while there is energy for it; back off to recharge when dry
+            # brawl inside arc range while there is energy for it; fall back to the other weapon's range when dry
             if me["energy"] > 35 or (self.zapping and me["energy"] > 8):
                 rng_want, self.zapping = ZAP_RANGE, True
+                boost = me["energy"] > 70 and 45 < d < 90
             else:
                 self.zapping = False
-                rng_want = LASER_RANGE if "laser" in held else FIGHT_RANGE
         radial = 0.0
         side = 1.0
-        if d > rng_want + 12:
+        if d > rng_want + 15:
             radial = 0.8
             if rng_want == ZAP_RANGE:
                 radial, side = 1.0, 0.45     # close the gap quickly: arcs only reach 45 m
-        elif d < rng_want - 20:
-            radial = -0.8
-        for s in (self.strafe, -self.strafe):
-            mv = (ux * radial - uy * s * side, uy * radial + ux * s * side)
+        elif d < rng_want - 15:
+            radial = -0.7
+        if DODGE:
+            sgn = self.dodge_sign(obs, me, ux, uy)
+            if sgn is not None:
+                self.strafe = sgn
+                self.strafe_until = max(self.strafe_until, t + 0.2)
+            for e in obs["mechs"]:
+                if e.get("charging") and e["kind"] == "mech":
+                    back = math.atan2(y - e["pos"][1], x - e["pos"][0])
+                    if abs(wrap(back - e["aim"][0])) < 0.25 and me["energy"] > 30 and "lightning" not in held:
+                        boost = True          # a charged laser is lined up on us: make it track a faster target
+        for sgn in (self.strafe, -self.strafe):
+            mv = (ux * radial - uy * sgn * side, uy * radial + ux * sgn * side)
             n = math.hypot(mv[0], mv[1])
             mv = (mv[0] / n, mv[1] / n)
             if self.open_dir(me, mv):
-                if s != self.strafe:
-                    self.strafe = s
-                return mv
-        return (ux * radial, uy * radial)
+                if sgn != self.strafe:
+                    self.strafe = sgn
+                return mv, boost
+        return (ux * radial, uy * radial), boost
 
     def angle_dir(self, me, tgt, visible, t):
         """Several enemies can see us: find a nearby spot where only the target has a line on us."""
@@ -632,7 +690,7 @@ class Bot:
         aim = [yaw, pitch]
         cur_yaw, cur_pitch = me["aim"]
         r = tgt.get("r", 2.5 * (1 + 0.05 * tgt.get("cubes", 0)))
-        tol = max(0.01, math.atan2(r * 0.8, dist))
+        tol = max(0.012, math.atan2(r * 1.0, dist))
         on = abs(wrap(yaw - cur_yaw)) < tol and abs(pitch - cur_pitch) < max(0.02, math.atan2(4.0, dist))
         clear = self.arena.los(muzzle, pt)
         if gun_i is not None:
@@ -643,15 +701,14 @@ class Bot:
             w = slots[las_i]
             ls = w["stats"]
             dyaw, dpitch, ddist, dpt = self.aim_at(me, tgt, None)
-            if w["cooldown"] <= 0.2 and ddist < ls["range"] * 0.95:
-                full = w.get("charge", 0) >= ls["charge"] - 0.05
-                if not full:
-                    fire[las_i] = True
-                else:
-                    # fully charged: swing onto the target itself (hitscan needs no lead) and let go when lined up
-                    aim = [dyaw, dpitch]
-                    lined = abs(wrap(dyaw - cur_yaw)) < math.atan2(r * 0.7, ddist) and abs(dpitch - cur_pitch) < math.atan2(3.5, ddist)
-                    fire[las_i] = not (lined and self.arena.los(muzzle, dpt))
+            charge = w.get("charge", 0)
+            if (w["cooldown"] <= 0.15 or charge > 0) and ddist < ls["range"] * 0.95:
+                # the beam is instant: point straight at the target for the whole charge, let go when full and lined up
+                aim = [dyaw, dpitch]
+                full = charge >= ls["charge"] - 0.05
+                up_tol = 1.8 if tgt.get("frac", 0.5) > 0.6 else 3.5     # only shoulders showing: do not sail over its head
+                lined = abs(wrap(dyaw - cur_yaw)) < math.atan2(r * 0.75, ddist) and abs(dpitch - cur_pitch) < math.atan2(up_tol, ddist)
+                fire[las_i] = not (full and lined and self.arena.los(muzzle, dpt))
         if lit_i is not None:
             w = slots[lit_i]
             floor_e = 55 if tgt.get("farm") else w["stats"]["energy"] + 8
