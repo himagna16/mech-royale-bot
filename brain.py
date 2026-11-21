@@ -31,7 +31,7 @@ def _env(name, default):
 
 
 FIGHT_RANGE = _env("MR_RANGE", 72.0)      # preferred duel distance (m)
-RETREAT_HP = _env("MR_RETREAT", 0.35)     # break contact below this health fraction
+RETREAT_HP = _env("MR_RETREAT", 0.3)     # break contact below this health fraction
 REJOIN_HP = _env("MR_REJOIN", 0.9)       # ... and come back above this one
 ZONE_MARGIN = 18.0
 FARM = _env("MR_FARM", 2.0)
