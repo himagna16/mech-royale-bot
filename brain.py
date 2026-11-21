@@ -42,6 +42,7 @@ DODGE = _env("MR_DODGE", 1.0) > 0
 FFA_DEATHS = _env("MR_FFADEATHS", 4.0)    # deaths we did not cause before we believe it is a free-for-all
 FARM_HP = _env("MR_FARMHP", 0.5)
 FFA_EVIDENCE = _env("MR_FFAEVID", 1.0) > 0
+FFA_STAND = _env("MR_FFASTAND", 1.0) > 0   # in a free-for-all, duel a lone attacker instead of running from it
 FFA_TWO = _env("MR_FFATWO", 40.0)           # two attackers before this time and before our first kill => free-for-all (0 = off)
 FFA_EARLY = _env("MR_FFAEARLY", 4.0)       # any mech damage before this time => free-for-all (0 = off)
 HUNT = _env("MR_HUNT", 0.0) > 0            # when idle and healthy, walk to where a mech was last seen
@@ -448,7 +449,8 @@ class Bot:
         opening = OPEN_T > 0 and t < OPEN_T and not ffa
         # in those situations an enemy in view means "leave", unless it is on top of us or nearly dead
         winning = tgt is not None and tfrac < hp_frac - 0.2 and n_threat <= 1
-        leave = (survive or opening) and tgt is not None and not (engaged and (tgt["d"] < 45 or winning))
+        stand = engaged and (tgt is not None) and (tgt["d"] < 45 or winning or (FFA_STAND and n_threat <= 1 and hp_frac > 0.45))
+        leave = (survive or opening) and tgt is not None and not stand
         cubes = [cp for cp in self.cube_memo.values()
                  if abs(cp[2] - self.arena.ground_at(cp[0], cp[1])) < 2.5 and math.hypot(cp[0] - zc[0], cp[1] - zc[1]) < zone["radius"] + 40]
         cube = min(cubes, key=lambda c: math.hypot(c[0] - x, c[1] - y), default=None)
