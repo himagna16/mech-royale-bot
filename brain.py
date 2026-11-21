@@ -55,6 +55,7 @@ HUNT = _env("MR_HUNT", 0.0) > 0            # when idle and healthy, walk to wher
 PURSUE = _env("MR_PURSUE", 1.0) > 0
 CUBE_MEMORY = _env("MR_CUBEMEM", 40.0)
 ARMED_MIN = _env("MR_ARMEDMIN", 2.0)
+ZAP_CLOSE = _env("MR_ZAPCLOSE", 1.0) > 0    # close to arc range when holding lightning (0 = keep the other weapon's range)
 UNFLANK = _env("MR_UNFLANK", 0.0)           # weight of backing away from the group when hit in the back mid-duel (0 = off)
 ANTI_ZAP = _env("MR_ANTIZAP", 0.0)         # preferred distance from a mech carrying lightning when we have none (0 = off)
 LASER_COVER = _env("MR_LASERCOVER", 14.0)   # reach (m) to search for cover from a charged laser aimed at us (0 = off)
@@ -821,7 +822,7 @@ class Bot:
         boost = False
         if "laser" in held:
             rng_want = LASER_RANGE
-        if "lightning" in held:
+        if ZAP_CLOSE and "lightning" in held:
             # brawl inside arc range while there is energy for it; fall back to the other weapon's range when dry
             if me["energy"] > 35 or (self.zapping and me["energy"] > 8):
                 rng_want, self.zapping = ZAP_RANGE, True
