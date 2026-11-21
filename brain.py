@@ -46,7 +46,7 @@ RUSH = _env("MR_RUSH", 1.0) > 0
 BREAK_N = _env("MR_BREAKN", 5.0)          # break off on numbers alone only against this many attackers
 DODGE = _env("MR_DODGE", 1.0) > 0
 FFA_DEATHS = _env("MR_FFADEATHS", 4.0)    # deaths we did not cause before we believe it is a free-for-all
-FARM_HP = _env("MR_FARMHP", 0.5)
+FARM_HP = _env("MR_FARMHP", 0.8)
 FFA_EVIDENCE = _env("MR_FFAEVID", 1.0) > 0
 FFA_STAND = _env("MR_FFASTAND", 1.0) > 0   # in a free-for-all, duel a lone attacker instead of running from it
 FFA_TWO = _env("MR_FFATWO", 40.0)           # two attackers before this time and before our first kill => free-for-all (0 = off)
@@ -56,7 +56,7 @@ PURSUE = _env("MR_PURSUE", 1.0) > 0
 CUBE_MEMORY = _env("MR_CUBEMEM", 40.0)
 ARMED_MIN = _env("MR_ARMEDMIN", 2.0)
 ANTI_ZAP = _env("MR_ANTIZAP", 0.0)         # preferred distance from a mech carrying lightning when we have none (0 = off)
-LASER_COVER = _env("MR_LASERCOVER", 0.0)   # reach (m) to search for cover from a charged laser aimed at us (0 = off)
+LASER_COVER = _env("MR_LASERCOVER", 14.0)   # reach (m) to search for cover from a charged laser aimed at us (0 = off)
 HEAL_TO = _env("MR_HEALTO", 0.6)            # with nobody in sight, leave cover once health is back above this
 UPG_B = _env("MR_UPGB", 0.0) > 0            # alternative upgrade order (repair and speed earlier)
 DODGE_FIGHT = _env("MR_DODGEFIGHT", 0.0) > 0  # in a duel, pick the best of nine directions against incoming shots
