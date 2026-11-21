@@ -71,7 +71,7 @@ PREFIRE = _env("MR_PREFIRE", 1.0)          # ticks of torso swing to anticipate 
 SALT = _env("MR_SALT", 0.0)               # reshuffles our random strafing without changing behaviour
 PICK_MEMORY = _env("MR_PICKMEM", 75.0)
 DROPS = _env("MR_DROPS", 0.0)           # go for supply drops within this many metres (0 = only when idle)
-ZAP_RANGE = _env("MR_ZRANGE", 28.0)
+ZAP_RANGE = _env("MR_ZRANGE", 40.0)
 LATENCY = _env("MR_LAT", 0.1)
 ACCEL_LEAD = _env("MR_ALEAD", 0.5)
 
