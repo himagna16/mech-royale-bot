@@ -69,7 +69,7 @@ UNFLANK = _env("MR_UNFLANK", 0.0)           # weight of backing away from the gr
 ANTI_ZAP = _env("MR_ANTIZAP", 0.0)         # preferred distance from a mech carrying lightning when we have none (0 = off)
 LASER_COVER = _env("MR_LASERCOVER", 14.0)   # reach (m) to search for cover from a charged laser aimed at us (0 = off)
 HEAL_TO = _env("MR_HEALTO", 0.6)            # with nobody in sight, leave cover once health is back above this
-TGT_HPW = _env("MR_TGTHPW", 60.0)           # how strongly target choice favours the weakest mech
+TGT_HPW = _env("MR_TGTHPW", 140.0)           # how strongly target choice favours the weakest mech
 FINISH_FRAC = _env("MR_FINISHFRAC", 0.2)    # an enemy below this health is worth finishing instead of retreating...
 FINISH_MYHP = _env("MR_FINISHMYHP", 0.2)    # ...while we are above this health...
 FINISH_MAXN = _env("MR_FINISHMAXN", 2.0)    # ...and no more than this many attackers are in view
