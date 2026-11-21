@@ -42,7 +42,7 @@ DODGE = _env("MR_DODGE", 1.0) > 0
 FFA_DEATHS = _env("MR_FFADEATHS", 4.0)    # deaths we did not cause before we believe it is a free-for-all
 FARM_HP = _env("MR_FARMHP", 0.5)
 FFA_EVIDENCE = _env("MR_FFAEVID", 1.0) > 0
-FFA_TWO = _env("MR_FFATWO", 0.0)           # two attackers before this time and before our first kill => free-for-all (0 = off)
+FFA_TWO = _env("MR_FFATWO", 40.0)           # two attackers before this time and before our first kill => free-for-all (0 = off)
 FFA_EARLY = _env("MR_FFAEARLY", 0.0)       # any mech damage before this time => free-for-all (0 = off)
 HUNT = _env("MR_HUNT", 0.0) > 0            # when idle and healthy, walk to where a mech was last seen
 PURSUE = _env("MR_PURSUE", 1.0) > 0
