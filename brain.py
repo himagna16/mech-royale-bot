@@ -211,7 +211,7 @@ class Bot:
         if self.last_alive is not None and obs["alive"] < self.last_alive:
             self.deaths_seen += self.last_alive - obs["alive"]
         self.last_alive = obs["alive"]
-        ffa = self.deaths_seen - self.my_kills >= 3   # others are dying without us: a free-for-all, not the squad
+        ffa = True  # experiment: always play the hide-and-survive posture
         for p in obs["pickups"]:
             self.pick_memo[p["id"]] = (p["kind"], p["pos"])
         for c in obs["crates"]:
