@@ -40,7 +40,9 @@ RUSH = _env("MR_RUSH", 1.0) > 0
 BREAK_N = _env("MR_BREAKN", 5.0)          # break off on numbers alone only against this many attackers
 DODGE = _env("MR_DODGE", 1.0) > 0
 FFA_DEATHS = _env("MR_FFADEATHS", 4.0)    # deaths we did not cause before we believe it is a free-for-all
-FARM_HP = _env("MR_FARMHP", 0.8)
+FARM_HP = _env("MR_FARMHP", 0.5)
+FFA_EVIDENCE = _env("MR_FFAEVID", 1.0) > 0
+HUNT = _env("MR_HUNT", 0.0) > 0            # when idle and healthy, walk to where a mech was last seen
 PURSUE = _env("MR_PURSUE", 1.0) > 0
 CUBE_MEMORY = _env("MR_CUBEMEM", 40.0)
 SALT = _env("MR_SALT", 0.0)               # reshuffles our random strafing without changing behaviour
@@ -335,7 +337,7 @@ class Bot:
         visible = [e for e in enemies if e["los"]]
 
         # ---- the practice squad never shoots its own: other mechs shooting each other means a free-for-all
-        if not self.ffa_latched and enemies:
+        if FFA_EVIDENCE and not self.ffa_latched and enemies:
             for b in obs["beams"]:
                 end = b["path"][-1]
                 if math.hypot(end[0] - x, end[1] - y) < 12:
@@ -514,6 +516,13 @@ class Bot:
                 if bestf is not None and (bestf[0] > 70 or not self.arena.los((x, y, z + 7.0), (bestf[1][0], bestf[1][1], bestf[1][2] + 1.5))):
                     mv = self.go(bestf[1][0], bestf[1][1], me, t)
                     mode = "farm"
+        if mode == "idle" and HUNT and not ffa and hp_frac > 0.7:
+            seen = [(t - et, ex, ey) for ex, ey, et in self.enemy_last.values()
+                    if t - et < 60.0 and math.hypot(ex - zc[0], ey - zc[1]) < zone["next_radius"] and math.hypot(ex - x, ey - y) > 25.0]
+            if seen:
+                _age, ex, ey = min(seen)
+                mv = self.go(ex, ey, me, t)
+                mode = "hunt"
         if mode == "idle" and not ffa and ROAM and dz_next > zone["next_radius"] * 0.45 and hp_frac > 0.6:
             mv = self.zone_dir(obs, me)
             mode = "roam"
