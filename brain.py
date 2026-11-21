@@ -269,7 +269,7 @@ class Bot:
             self.deaths_seen += self.last_alive - obs["alive"]
         self.last_alive = obs["alive"]
         other_deaths = self.deaths_seen - self.my_kills
-        if other_deaths >= FFA_DEATHS or (other_deaths >= 3 and t < 60):
+        if other_deaths >= FFA_DEATHS or (other_deaths >= 2 and t < 45) or (other_deaths >= 3 and t < 90):
             self.ffa_latched = True      # others are dying without us: a free-for-all, not the practice squad
         ffa = self.ffa_latched
         for p in obs["pickups"]:
