@@ -60,10 +60,10 @@ FFA_TWO = _env("MR_FFATWO", 40.0)           # two attackers before this time and
 FFA_EARLY = _env("MR_FFAEARLY", 4.0)       # any mech damage before this time => free-for-all (0 = off)
 HUNT = _env("MR_HUNT", 0.0) > 0            # when idle and healthy, walk to where a mech was last seen
 PURSUE = _env("MR_PURSUE", 1.0) > 0
-CUBE_MEMORY = _env("MR_CUBEMEM", 40.0)
+CUBE_MEMORY = _env("MR_CUBEMEM", 60.0)
 ARMED_MIN = _env("MR_ARMEDMIN", 2.0)
 LASER_PULL = _env("MR_LASERPULL", 0.0)      # extra metres we will walk for a laser, and keep seeking one while holding lightning (0 = off)
-CUBE_REACH = _env("MR_CUBEREACH", 150.0)    # how far to walk for a remembered cube when nobody is in sight
+CUBE_REACH = _env("MR_CUBEREACH", 220.0)    # how far to walk for a remembered cube when nobody is in sight
 ZAP_CLOSE = _env("MR_ZAPCLOSE", 1.0) > 0    # close to arc range when holding lightning (0 = keep the other weapon's range)
 UNFLANK = _env("MR_UNFLANK", 0.0)           # weight of backing away from the group when hit in the back mid-duel (0 = off)
 ANTI_ZAP = _env("MR_ANTIZAP", 0.0)         # preferred distance from a mech carrying lightning when we have none (0 = off)
