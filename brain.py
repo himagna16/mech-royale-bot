@@ -103,6 +103,7 @@ ANGLE_W = _env("MR_ANGLEW", 0.0)           # in a duel, cost of each step option
 CUBE_MELEE = _env("MR_CUBEMELEE", 0.0) > 0  # step onto nearby cubes even with the target close
 UPG_D = _env("MR_UPGD", 0.0) > 0           # gun-first upgrade order (armour, gun damage, repair, gun rate ...)
 USE_DROPS = _env("MR_USEDROPS", 1.0) > 0   # walk to supply drops when idle
+PROBE = _env("MR_PROBE", 0.0)              # diagnostic builds only: stand still once this share of our gun shots was not carried out (late answers)
 SALT_MAP = os.environ.get("MR_SALTMAP", "")   # "modulus:residue:salt,..." overrides of the reshuffle for groups of spawn points
 CFG_MAP = os.environ.get("MR_CFGMAP", "")     # "modulus:residue:NAME=VAL;NAME=VAL,..." per-group overrides of the tunables above
 SALT = _env("MR_SALT", 0.0)               # reshuffles our random strafing without changing behaviour
@@ -178,6 +179,7 @@ class Bot:
         self.hit_by = {}         # mech id -> last time it damaged us
         self.tgt_t = -100.0
         self.losing_t = -100.0
+        self.fire_ok, self.fire_drop, self.fire_expect = 0, 0, None
         self.heard = None        # (t, bearing, distance class) of the last weapon noise
         self.memo_t = {}         # pickup / cube id -> last time we saw it
         self.tgt_id = None
@@ -330,6 +332,18 @@ class Bot:
         zone = obs["zone"]
         self.fields_left = 1
         self.now = t
+        # did the gun shot we ordered last time actually happen? (a late answer loses its fire command)
+        if self.fire_expect is not None:
+            g_ = next((w for w in me["weapons"] if w and w["kind"] == "gun"), None)
+            if g_ is not None and obs["tick"] == self.fire_expect[1] + 2:
+                if g_["ammo"] < self.fire_expect[0]:
+                    self.fire_ok += 1
+                elif g_["ammo"] == self.fire_expect[0] and g_.get("reload", 0) <= 0:
+                    self.fire_drop += 1
+            self.fire_expect = None
+        if PROBE > 0 and self.fire_ok + self.fire_drop >= 30 and self.fire_drop > PROBE * (self.fire_ok + self.fire_drop):
+            self.mode = "probe-idle"
+            return {"tick": obs["tick"], "move": [0.0, 0.0], "fire": [False, False]}
         if not self.salted:
             # practice matches are recognisable by where we spawn: each group of them can use its own reshuffle
             self.salted = True
@@ -805,6 +819,9 @@ class Bot:
         if aim is not None:
             act["aim"] = [float(aim[0]), float(aim[1])]
         act["fire"] = [bool(fire[0]), bool(fire[1])]
+        for i_, w_ in enumerate(slots):
+            if w_ and w_["kind"] == "gun" and fire[i_] and w_["ammo"] > 0 and w_.get("reload", 0) <= 0 and w_["cooldown"] <= 0:
+                self.fire_expect = (w_["ammo"], obs["tick"])
         self.prev_vel = {m["id"]: (t, m["vel"]) for m in obs["mechs"]}
         for m in enemies:
             self.enemy_last[m["id"]] = (m["pos"][0], m["pos"][1], t)
