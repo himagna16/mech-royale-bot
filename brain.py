@@ -56,16 +56,16 @@ BUNKER = _env("MR_BUNKER", 0.0) > 0        # hold a tucked-away spot and make hu
 BUNKER_LEASH = _env("MR_LEASH", 16.0)
 GRAB = _env("MR_GRAB", 70.0)
 RUSH = _env("MR_RUSH", 1.0) > 0
-BREAK_N = _env("MR_BREAKN", 5.0)          # break off on numbers alone only against this many attackers
+BREAK_N = _env("MR_BREAKN", 3.0)          # break off on numbers alone only against this many attackers
 DODGE = _env("MR_DODGE", 1.0) > 0
 FFA_DEATHS = _env("MR_FFADEATHS", 4.0)    # deaths we did not cause before we believe it is a free-for-all
 FARM_HP = _env("MR_FARMHP", 0.5)
 FFA_EVIDENCE = _env("MR_FFAEVID", 1.0) > 0
 FFA_STAND = _env("MR_FFASTAND", 1.0) > 0   # in a free-for-all, duel a lone attacker instead of running from it
-FFA_FIX = _env("MR_FFAFIX", 0.0) > 0       # free-for-all only: count unseen attackers, never stand still under fire
+FFA_FIX = _env("MR_FFAFIX", 1.0) > 0       # free-for-all only: count unseen attackers, never stand still under fire
 FFA_TWO = _env("MR_FFATWO", 40.0)           # two attackers before this time and before our first kill => free-for-all (0 = off)
 FFA_EARLY = _env("MR_FFAEARLY", 4.0)       # any mech damage before this time => free-for-all (0 = off)
-HUNT = _env("MR_HUNT", 0.0) > 0            # when idle and healthy, walk to where a mech was last seen
+HUNT = _env("MR_HUNT", 1.0) > 0            # when idle and healthy, walk to where a mech was last seen
 PURSUE = _env("MR_PURSUE", 1.0) > 0
 CUBE_MEMORY = _env("MR_CUBEMEM", 40.0)
 ARMED_MIN = _env("MR_ARMEDMIN", 2.0)
@@ -92,9 +92,9 @@ PREFIRE = _env("MR_PREFIRE", 1.0)          # ticks of torso swing to anticipate 
 MORTAR_RANK = _env("MR_MORTAR", 1.0)       # rank of the mortar as a second weapon (-1 = never pick one up: it makes lasers hurt us 60% more)
 WEAPON_RANK["mortar"] = MORTAR_RANK
 LASER_LOS = _env("MR_LASERLOS", 0.0) > 0   # start charging the laser only at a target we can see (charging halves our speed)
-RET_MEM = _env("MR_RETMEM", 0.0)           # >0: retreat only while "losing" was true this many seconds ago; no waiting to heal
-LOSE2_HP = _env("MR_LOSE2", 0.5)           # two attackers: break off below this health
-BREAK_HP = _env("MR_BREAKHP", 0.75)        # BREAK_N attackers: break off below this health
+RET_MEM = _env("MR_RETMEM", 1.5)           # >0: retreat only while "losing" was true this many seconds ago; no waiting to heal
+LOSE2_HP = _env("MR_LOSE2", 0.55)           # two attackers: break off below this health
+BREAK_HP = _env("MR_BREAKHP", 0.8)        # BREAK_N attackers: break off below this health
 STICK = _env("MR_STICK", 35.0)             # how strongly we stay on the mech we were already shooting
 STICK_T = _env("MR_STICKT", 0.0)           # ...only if we targeted it within this many seconds (0 = always)
 WEAK_BONUS = _env("MR_WEAKBONUS", 0.0)     # extra pull toward a mech at or below 30% health
@@ -105,7 +105,7 @@ UPG_D = _env("MR_UPGD", 0.0) > 0           # gun-first upgrade order (armour, gu
 USE_DROPS = _env("MR_USEDROPS", 1.0) > 0   # walk to supply drops when idle
 SALT_MAP = os.environ.get("MR_SALTMAP", "")   # "modulus:residue:salt,..." overrides of the reshuffle for groups of spawn points
 CFG_MAP = os.environ.get("MR_CFGMAP", "")     # "modulus:residue:NAME=VAL;NAME=VAL,..." per-group overrides of the tunables above
-SALT = _env("MR_SALT", 0.0)               # reshuffles our random strafing without changing behaviour
+SALT = _env("MR_SALT", 2.0)               # reshuffles our random strafing without changing behaviour
 PICK_MEMORY = _env("MR_PICKMEM", 75.0)
 DROPS = _env("MR_DROPS", 0.0)           # go for supply drops within this many metres (0 = only when idle)
 ZAP_RANGE = _env("MR_ZRANGE", 28.0)
