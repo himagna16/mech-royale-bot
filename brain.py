@@ -110,6 +110,8 @@ ZAP_EXTRA = _env("MR_ZAPEXTRA", 8.0)       # energy kept in reserve when firing 
 SNACK_R = _env("MR_SNACKR", 70.0)          # how far we will walk to a cube in the middle of a fight (halved when hurt)
 CUBE_CAP = _env("MR_CUBECAP", 0.0)         # cubes stop adding health and damage at 10: beyond this count only take ones within 30 m (0 = no limit)
 PROBE_C = _env("MR_PROBEC", 0.0)            # diagnostic builds only: 406 = stand still once we have 4 kills but fewer than 6 cubes
+DROP_PRIO = _env("MR_DROPPRIO", 0.0)        # >0: a supply drop within this many metres outranks everything but the zone (it is a full heal plus 3 cubes)
+DROP_EARLY = _env("MR_DROPEARLY", 6.0)      # ...and we set off so as to reach it this many seconds before it lands
 ROAM_F = _env("MR_ROAMF", 0.45)             # when idle, drift toward the next circle's centre until within this share of its radius
 STOP_T = _env("MR_STOPT", 0.0)              # diagnostic builds only: stand still after this many seconds (score = kills made by then)
 STOP_K = _env("MR_STOPK", 0.0)              # diagnostic builds only: stand still after this many kills (the score then shows how often we reach it)
@@ -190,6 +192,7 @@ class Bot:
         self.tgt_t = -100.0
         self.losing_t = -100.0
         self.fire_ok, self.fire_drop, self.fire_expect = 0, 0, None
+        self.ring_t, self.drop_ban = 0.0, {}
         self.heard = None        # (t, bearing, distance class) of the last weapon noise
         self.memo_t = {}         # pickup / cube id -> last time we saw it
         self.tgt_id = None
@@ -774,6 +777,33 @@ class Bot:
                 nb = math.hypot(bx, by)
                 if nb > 1e-6 and not self.arena.blocked(x + bx / nb * 4.0, y + by / nb * 4.0, z):
                     mv = (bx / nb, by / nb) if n0 > 0.05 else (side[0], side[1])
+
+        # ---- supply drop: stand in its ring alone for a few seconds = full health, full energy, three cubes
+        if DROP_PRIO > 0 and not ffa and obs["drops"] and not must_move:
+            bestd = None
+            for d_ in obs["drops"]:
+                if d_.get("holder") not in (None, me["id"]) or t < self.drop_ban.get(d_["id"], -1.0):
+                    continue
+                dd = math.hypot(d_["pos"][0] - x, d_["pos"][1] - y)
+                if dd > DROP_PRIO or d_["lands_in"] > dd / max(st["walk_speed"] * 0.85, 1.0) + DROP_EARLY:
+                    continue
+                if bestd is None or dd < bestd[0]:
+                    bestd = (dd, d_)
+            if bestd is not None:
+                dd, d_ = bestd
+                if dd > 2.5:
+                    mv = self.go(d_["pos"][0], d_["pos"][1], me, t)
+                    boost = me["energy"] > 50 and dd > 25
+                else:
+                    mv = (0.0, 0.0)
+                mode = "drop"
+                if dd < d_.get("radius", 8) and d_["lands_in"] <= 0:
+                    self.ring_t += 0.1
+                    if self.ring_t > 12.0:           # someone keeps stepping in: stop standing here as a target
+                        self.drop_ban[d_["id"]] = t + 25.0
+                        self.ring_t = 0.0
+                else:
+                    self.ring_t = 0.0
 
         # ---- stuck recovery
         if self.last_pos is not None and math.hypot(mv[0], mv[1]) > 0.5:
