@@ -103,6 +103,10 @@ ANGLE_W = _env("MR_ANGLEW", 0.0)           # in a duel, cost of each step option
 CUBE_MELEE = _env("MR_CUBEMELEE", 0.0) > 0  # step onto nearby cubes even with the target close
 UPG_D = _env("MR_UPGD", 0.0) > 0           # gun-first upgrade order (armour, gun damage, repair, gun rate ...)
 USE_DROPS = _env("MR_USEDROPS", 1.0) > 0   # walk to supply drops when idle
+LGUN_AIM = _env("MR_LGUNAIM", 0.0)         # keep the gun's lead aim (so the gun keeps firing) for this share of the laser charge
+NO_CLEAR = _env("MR_NOCLEAR", 0.0) > 0     # shoot at a target we can see without our own (coarse) check of the line to the lead point
+SPIN = _env("MR_SPIN", 0.0)                # with nothing in sight, turn the torso all the way round at this rate (rad/s) instead of sweeping
+ZAP_EXTRA = _env("MR_ZAPEXTRA", 8.0)       # energy kept in reserve when firing lightning
 PROBE = _env("MR_PROBE", 0.0)              # diagnostic builds only: stand still once this share of our gun shots was not carried out (late answers)
 SALT_MAP = os.environ.get("MR_SALTMAP", "")   # "modulus:residue:salt,..." overrides of the reshuffle for groups of spawn points
 CFG_MAP = os.environ.get("MR_CFGMAP", "")     # "modulus:residue:NAME=VAL;NAME=VAL,..." per-group overrides of the tunables above
@@ -808,7 +812,7 @@ class Bot:
             else:
                 # sweep the torso so the 120 degree wedge covers everything every few seconds
                 base = math.atan2(self.last_move[1], self.last_move[0])
-                aim = [base + 1.9 * math.sin(t * 1.1), 0.0]
+                aim = [base + 1.9 * math.sin(t * 1.1), 0.0] if SPIN <= 0 else [wrap(t * SPIN), 0.0]
             gun = next((w for w in slots if w and w["kind"] == "gun"), None)
             if gun and gun["ammo"] < gun["stats"]["mag"] and gun["reload"] <= 0 and not any(fire):
                 act["reload"] = True
@@ -1099,7 +1103,7 @@ class Bot:
         swing = st.get("turn_rate", 4.0) * 0.05 * PREFIRE
         on = max(0.0, abs(wrap(yaw - cur_yaw)) - swing) < tol and \
             max(0.0, abs(pitch - cur_pitch) - st.get("pitch_rate", 3.0) * 0.05 * PREFIRE) < max(0.02, math.atan2(4.0, dist))
-        clear = self.arena.los(muzzle, pt)
+        clear = self.arena.los(muzzle, pt) or (NO_CLEAR and tgt.get("los", False))
         if gun_i is not None:
             g = slots[gun_i]
             if on and clear and dist < g["stats"]["range"] * 0.97:
@@ -1111,16 +1115,17 @@ class Bot:
             charge = w.get("charge", 0)
             if (w["cooldown"] <= 0.15 or charge > 0) and ddist < ls["range"] * 0.95 and (not LASER_LOS or charge > 0 or tgt.get("los", True)):
                 # the beam is instant: point straight at the target for the whole charge, let go when full and lined up
-                aim = [dyaw, dpitch]
+                if not (LGUN_AIM > 0 and gun_i is not None and charge < LGUN_AIM * ls["charge"]):
+                    aim = [dyaw, dpitch]      # (early in the charge the gun's lead aim stays, so the gun keeps shooting)
                 full = charge >= ls["charge"] - 0.05
                 up_tol = 1.8 if tgt.get("frac", 0.5) > 0.6 else 3.5     # only shoulders showing: do not sail over its head
                 lswing = st.get("turn_rate", 4.0) * 0.05 * LASER_PREFIRE
                 lined = max(0.0, abs(wrap(dyaw - cur_yaw)) - lswing) < math.atan2(r * LASER_TOL, ddist) and \
                     max(0.0, abs(dpitch - cur_pitch) - st.get("pitch_rate", 3.0) * 0.05 * LASER_PREFIRE) < math.atan2(up_tol, ddist)
-                fire[las_i] = not (full and lined and self.arena.los(muzzle, dpt))
+                fire[las_i] = not (full and lined and (self.arena.los(muzzle, dpt) or (NO_CLEAR and tgt.get("los", False))))
         if lit_i is not None:
             w = slots[lit_i]
-            floor_e = 55 if tgt.get("farm") else w["stats"]["energy"] + 8
+            floor_e = 55 if tgt.get("farm") else w["stats"]["energy"] + ZAP_EXTRA
             if dist < w["stats"]["range"] and abs(wrap(yaw - cur_yaw)) < math.radians(w["stats"]["cone_deg"]) * 0.9 and me["energy"] >= floor_e and clear:
                 fire[lit_i] = True
         if mor_i is not None and 20 < dist < 150 and not tgt.get("farm"):
