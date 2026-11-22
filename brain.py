@@ -84,6 +84,7 @@ LASER_TOL = _env("MR_LTOL", 0.75)          # how close to centre the beam must p
 JUKE = _env("MR_JUKE", 1.0)                # scales the time between strafe reversals
 PREFIRE = _env("MR_PREFIRE", 1.0)          # ticks of torso swing to anticipate when firing the gun (0 = off)
 SALT_MAP = os.environ.get("MR_SALTMAP", "")   # "modulus:residue:salt,..." overrides of the reshuffle for groups of spawn points
+CFG_MAP = os.environ.get("MR_CFGMAP", "")     # "modulus:residue:NAME=VAL;NAME=VAL,..." per-group overrides of the tunables above
 SALT = _env("MR_SALT", 0.0)               # reshuffles our random strafing without changing behaviour
 PICK_MEMORY = _env("MR_PICKMEM", 75.0)
 DROPS = _env("MR_DROPS", 0.0)           # go for supply drops within this many metres (0 = only when idle)
@@ -319,6 +320,15 @@ class Bot:
                         salt = int(s_)
                 if salt is not None:
                     self.rng = random.Random(self.hello_seed + salt)
+            if CFG_MAP:
+                # same idea for the tunables themselves: "modulus:residue:NAME=VAL;NAME=VAL" (one match per process)
+                h = (int(round(x)) * 7919 + int(round(y)) * 104729) % 1000003
+                for rule in CFG_MAP.split(","):
+                    m_, r_, kv = rule.split(":", 2)
+                    if h % int(m_) == int(r_):
+                        for item in kv.split(";"):
+                            k_, v_ = item.split("=")
+                            globals()[k_] = (float(v_) > 0) if isinstance(globals()[k_], bool) else float(v_)
 
         # ---- bookkeeping
         for ev in obs["events"]:
