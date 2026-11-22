@@ -62,10 +62,10 @@ FFA_DEATHS = _env("MR_FFADEATHS", 4.0)    # deaths we did not cause before we be
 FARM_HP = _env("MR_FARMHP", 0.5)
 FFA_EVIDENCE = _env("MR_FFAEVID", 1.0) > 0
 FFA_STAND = _env("MR_FFASTAND", 1.0) > 0   # in a free-for-all, duel a lone attacker instead of running from it
-FFA_FIX = _env("MR_FFAFIX", 0.0) > 0       # free-for-all only: count unseen attackers, never stand still under fire
+FFA_FIX = _env("MR_FFAFIX", 1.0) > 0       # free-for-all only: count unseen attackers, never stand still under fire
 FFA_TWO = _env("MR_FFATWO", 40.0)           # two attackers before this time and before our first kill => free-for-all (0 = off)
 FFA_EARLY = _env("MR_FFAEARLY", 4.0)       # any mech damage before this time => free-for-all (0 = off)
-HUNT = _env("MR_HUNT", 0.0) > 0            # when idle and healthy, walk to where a mech was last seen
+HUNT = _env("MR_HUNT", 1.0) > 0            # when idle and healthy, walk to where a mech was last seen
 PURSUE = _env("MR_PURSUE", 1.0) > 0
 CUBE_MEMORY = _env("MR_CUBEMEM", 40.0)
 ARMED_MIN = _env("MR_ARMEDMIN", 2.0)
@@ -110,16 +110,16 @@ ZAP_EXTRA = _env("MR_ZAPEXTRA", 8.0)       # energy kept in reserve when firing 
 SNACK_R = _env("MR_SNACKR", 70.0)          # how far we will walk to a cube in the middle of a fight (halved when hurt)
 CUBE_CAP = _env("MR_CUBECAP", 0.0)         # cubes stop adding health and damage at 10: beyond this count only take ones within 30 m (0 = no limit)
 PROBE_C = _env("MR_PROBEC", 0.0)            # diagnostic builds only: 406 = stand still once we have 4 kills but fewer than 6 cubes
-DROP_PRIO = _env("MR_DROPPRIO", 0.0)        # >0: a supply drop within this many metres outranks everything but the zone (it is a full heal plus 3 cubes)
-DROP_TETHER = _env("MR_DROPTETHER", 0.0)    # >0: near the drop spot keep fighting and dodging as usual, just stay within this many metres (and strafe inside the ring)
-DROP_EARLY = _env("MR_DROPEARLY", 6.0)      # ...and we set off so as to reach it this many seconds before it lands
+DROP_PRIO = _env("MR_DROPPRIO", 500.0)        # >0: a supply drop within this many metres outranks everything but the zone (it is a full heal plus 3 cubes)
+DROP_TETHER = _env("MR_DROPTETHER", 14.0)    # >0: near the drop spot keep fighting and dodging as usual, just stay within this many metres (and strafe inside the ring)
+DROP_EARLY = _env("MR_DROPEARLY", 12.0)      # ...and we set off so as to reach it this many seconds before it lands
 ROAM_F = _env("MR_ROAMF", 0.45)             # when idle, drift toward the next circle's centre until within this share of its radius
 STOP_T = _env("MR_STOPT", 0.0)              # diagnostic builds only: stand still after this many seconds (score = kills made by then)
 STOP_K = _env("MR_STOPK", 0.0)              # diagnostic builds only: stand still after this many kills (the score then shows how often we reach it)
 PROBE = _env("MR_PROBE", 0.0)              # diagnostic builds only: stand still once this share of our gun shots was not carried out (late answers)
 SALT_MAP = os.environ.get("MR_SALTMAP", "")   # "modulus:residue:salt,..." overrides of the reshuffle for groups of spawn points
 CFG_MAP = os.environ.get("MR_CFGMAP", "")     # "modulus:residue:NAME=VAL;NAME=VAL,..." per-group overrides of the tunables above
-SALT = _env("MR_SALT", 0.0)               # reshuffles our random strafing without changing behaviour
+SALT = _env("MR_SALT", 2.0)               # reshuffles our random strafing without changing behaviour
 PICK_MEMORY = _env("MR_PICKMEM", 75.0)
 DROPS = _env("MR_DROPS", 0.0)           # go for supply drops within this many metres (0 = only when idle)
 ZAP_RANGE = _env("MR_ZRANGE", 28.0)
