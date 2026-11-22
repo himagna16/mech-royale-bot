@@ -62,10 +62,10 @@ FFA_DEATHS = _env("MR_FFADEATHS", 4.0)    # deaths we did not cause before we be
 FARM_HP = _env("MR_FARMHP", 0.5)
 FFA_EVIDENCE = _env("MR_FFAEVID", 1.0) > 0
 FFA_STAND = _env("MR_FFASTAND", 1.0) > 0   # in a free-for-all, duel a lone attacker instead of running from it
-FFA_FIX = _env("MR_FFAFIX", 0.0) > 0       # free-for-all only: count unseen attackers, never stand still under fire
+FFA_FIX = _env("MR_FFAFIX", 1.0) > 0       # free-for-all only: count unseen attackers, never stand still under fire
 FFA_TWO = _env("MR_FFATWO", 40.0)           # two attackers before this time and before our first kill => free-for-all (0 = off)
 FFA_EARLY = _env("MR_FFAEARLY", 4.0)       # any mech damage before this time => free-for-all (0 = off)
-HUNT = _env("MR_HUNT", 0.0) > 0            # when idle and healthy, walk to where a mech was last seen
+HUNT = _env("MR_HUNT", 1.0) > 0            # when idle and healthy, walk to where a mech was last seen
 PURSUE = _env("MR_PURSUE", 1.0) > 0
 CUBE_MEMORY = _env("MR_CUBEMEM", 40.0)
 ARMED_MIN = _env("MR_ARMEDMIN", 2.0)
@@ -105,12 +105,12 @@ UPG_D = _env("MR_UPGD", 0.0) > 0           # gun-first upgrade order (armour, gu
 USE_DROPS = _env("MR_USEDROPS", 1.0) > 0   # walk to supply drops when idle
 LGUN_AIM = _env("MR_LGUNAIM", 0.0)         # keep the gun's lead aim (so the gun keeps firing) for this share of the laser charge
 NO_CLEAR = _env("MR_NOCLEAR", 0.0) > 0     # shoot at a target we can see without our own (coarse) check of the line to the lead point
-SPIN = _env("MR_SPIN", 0.0)                # with nothing in sight, turn the torso all the way round at this rate (rad/s) instead of sweeping
+SPIN = _env("MR_SPIN", 3.5)                # with nothing in sight, turn the torso all the way round at this rate (rad/s) instead of sweeping
 ZAP_EXTRA = _env("MR_ZAPEXTRA", 8.0)       # energy kept in reserve when firing lightning
 PROBE = _env("MR_PROBE", 0.0)              # diagnostic builds only: stand still once this share of our gun shots was not carried out (late answers)
 SALT_MAP = os.environ.get("MR_SALTMAP", "")   # "modulus:residue:salt,..." overrides of the reshuffle for groups of spawn points
 CFG_MAP = os.environ.get("MR_CFGMAP", "")     # "modulus:residue:NAME=VAL;NAME=VAL,..." per-group overrides of the tunables above
-SALT = _env("MR_SALT", 0.0)               # reshuffles our random strafing without changing behaviour
+SALT = _env("MR_SALT", 2.0)               # reshuffles our random strafing without changing behaviour
 PICK_MEMORY = _env("MR_PICKMEM", 75.0)
 DROPS = _env("MR_DROPS", 0.0)           # go for supply drops within this many metres (0 = only when idle)
 ZAP_RANGE = _env("MR_ZRANGE", 28.0)
