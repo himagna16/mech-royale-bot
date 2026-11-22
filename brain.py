@@ -110,6 +110,7 @@ ZAP_EXTRA = _env("MR_ZAPEXTRA", 8.0)       # energy kept in reserve when firing 
 SNACK_R = _env("MR_SNACKR", 70.0)          # how far we will walk to a cube in the middle of a fight (halved when hurt)
 CUBE_CAP = _env("MR_CUBECAP", 0.0)         # cubes stop adding health and damage at 10: beyond this count only take ones within 30 m (0 = no limit)
 PROBE_C = _env("MR_PROBEC", 0.0)            # diagnostic builds only: 406 = stand still once we have 4 kills but fewer than 6 cubes
+STOP_T = _env("MR_STOPT", 0.0)              # diagnostic builds only: stand still after this many seconds (score = kills made by then)
 STOP_K = _env("MR_STOPK", 0.0)              # diagnostic builds only: stand still after this many kills (the score then shows how often we reach it)
 PROBE = _env("MR_PROBE", 0.0)              # diagnostic builds only: stand still once this share of our gun shots was not carried out (late answers)
 SALT_MAP = os.environ.get("MR_SALTMAP", "")   # "modulus:residue:salt,..." overrides of the reshuffle for groups of spawn points
@@ -349,7 +350,7 @@ class Bot:
                 elif g_["ammo"] == self.fire_expect[0] and g_.get("reload", 0) <= 0:
                     self.fire_drop += 1
             self.fire_expect = None
-        if (STOP_K > 0 and self.my_kills >= STOP_K) or (PROBE_C > 0 and self.my_kills >= PROBE_C // 100 and me["cubes"] < PROBE_C % 100):
+        if (STOP_K > 0 and self.my_kills >= STOP_K) or (STOP_T > 0 and t >= STOP_T) or (PROBE_C > 0 and self.my_kills >= PROBE_C // 100 and me["cubes"] < PROBE_C % 100):
             self.mode = "probe-idle"
             return {"tick": obs["tick"], "move": [0.0, 0.0], "fire": [False, False]}
         if PROBE > 0 and self.fire_ok + self.fire_drop >= 30 and self.fire_drop > PROBE * (self.fire_ok + self.fire_drop):
