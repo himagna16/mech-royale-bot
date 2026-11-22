@@ -110,6 +110,7 @@ ZAP_EXTRA = _env("MR_ZAPEXTRA", 8.0)       # energy kept in reserve when firing 
 SNACK_R = _env("MR_SNACKR", 70.0)          # how far we will walk to a cube in the middle of a fight (halved when hurt)
 CUBE_CAP = _env("MR_CUBECAP", 0.0)         # cubes stop adding health and damage at 10: beyond this count only take ones within 30 m (0 = no limit)
 PROBE_C = _env("MR_PROBEC", 0.0)            # diagnostic builds only: 406 = stand still once we have 4 kills but fewer than 6 cubes
+ROAM_F = _env("MR_ROAMF", 0.45)             # when idle, drift toward the next circle's centre until within this share of its radius
 STOP_T = _env("MR_STOPT", 0.0)              # diagnostic builds only: stand still after this many seconds (score = kills made by then)
 STOP_K = _env("MR_STOPK", 0.0)              # diagnostic builds only: stand still after this many kills (the score then shows how often we reach it)
 PROBE = _env("MR_PROBE", 0.0)              # diagnostic builds only: stand still once this share of our gun shots was not carried out (late answers)
@@ -726,7 +727,7 @@ class Bot:
                 if math.hypot(hx_ - zc[0], hy_ - zc[1]) < zone["radius"]:
                     mv = self.go(hx_, hy_, me, t)
                     mode = "hunt"
-        if mode == "idle" and not ffa and ROAM and dz_next > zone["next_radius"] * 0.45 and hp_frac > 0.6:
+        if mode == "idle" and not ffa and ROAM and dz_next > max(zone["next_radius"] * ROAM_F, 6.0) and hp_frac > 0.6:
             mv = self.zone_dir(obs, me)
             mode = "roam"
         if final and not must_move and mode in ("idle", "zone", "roam"):
