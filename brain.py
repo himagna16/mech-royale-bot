@@ -107,6 +107,7 @@ LGUN_AIM = _env("MR_LGUNAIM", 0.0)         # keep the gun's lead aim (so the gun
 NO_CLEAR = _env("MR_NOCLEAR", 0.0) > 0     # shoot at a target we can see without our own (coarse) check of the line to the lead point
 SPIN = _env("MR_SPIN", 0.0)                # with nothing in sight, turn the torso all the way round at this rate (rad/s) instead of sweeping
 ZAP_EXTRA = _env("MR_ZAPEXTRA", 8.0)       # energy kept in reserve when firing lightning
+STOP_K = _env("MR_STOPK", 0.0)              # diagnostic builds only: stand still after this many kills (the score then shows how often we reach it)
 PROBE = _env("MR_PROBE", 0.0)              # diagnostic builds only: stand still once this share of our gun shots was not carried out (late answers)
 SALT_MAP = os.environ.get("MR_SALTMAP", "")   # "modulus:residue:salt,..." overrides of the reshuffle for groups of spawn points
 CFG_MAP = os.environ.get("MR_CFGMAP", "")     # "modulus:residue:NAME=VAL;NAME=VAL,..." per-group overrides of the tunables above
@@ -345,6 +346,9 @@ class Bot:
                 elif g_["ammo"] == self.fire_expect[0] and g_.get("reload", 0) <= 0:
                     self.fire_drop += 1
             self.fire_expect = None
+        if STOP_K > 0 and self.my_kills >= STOP_K:
+            self.mode = "probe-idle"
+            return {"tick": obs["tick"], "move": [0.0, 0.0], "fire": [False, False]}
         if PROBE > 0 and self.fire_ok + self.fire_drop >= 30 and self.fire_drop > PROBE * (self.fire_ok + self.fire_drop):
             self.mode = "probe-idle"
             return {"tick": obs["tick"], "move": [0.0, 0.0], "fire": [False, False]}
