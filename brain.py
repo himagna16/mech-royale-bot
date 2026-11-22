@@ -111,6 +111,7 @@ SNACK_R = _env("MR_SNACKR", 70.0)          # how far we will walk to a cube in t
 CUBE_CAP = _env("MR_CUBECAP", 0.0)         # cubes stop adding health and damage at 10: beyond this count only take ones within 30 m (0 = no limit)
 PROBE_C = _env("MR_PROBEC", 0.0)            # diagnostic builds only: 406 = stand still once we have 4 kills but fewer than 6 cubes
 DROP_PRIO = _env("MR_DROPPRIO", 0.0)        # >0: a supply drop within this many metres outranks everything but the zone (it is a full heal plus 3 cubes)
+DROP_TETHER = _env("MR_DROPTETHER", 0.0)    # >0: near the drop spot keep fighting and dodging as usual, just stay within this many metres (and strafe inside the ring)
 DROP_EARLY = _env("MR_DROPEARLY", 6.0)      # ...and we set off so as to reach it this many seconds before it lands
 ROAM_F = _env("MR_ROAMF", 0.45)             # when idle, drift toward the next circle's centre until within this share of its radius
 STOP_T = _env("MR_STOPT", 0.0)              # diagnostic builds only: stand still after this many seconds (score = kills made by then)
@@ -791,11 +792,19 @@ class Bot:
                     bestd = (dd, d_)
             if bestd is not None:
                 dd, d_ = bestd
-                if dd > 2.5:
-                    mv = self.go(d_["pos"][0], d_["pos"][1], me, t)
-                    boost = me["energy"] > 50 and dd > 25
-                else:
-                    mv = (0.0, 0.0)
+                keep = False
+                if DROP_TETHER > 0:
+                    nd = math.hypot(x + mv[0] * 2.0 - d_["pos"][0], y + mv[1] * 2.0 - d_["pos"][1])
+                    if d_["lands_in"] > 0.3:
+                        keep = dd < DROP_TETHER and nd < DROP_TETHER      # waiting for it: do not stand still as a target
+                    else:
+                        keep = dd < 5.5 and nd < 5.5                      # it is down: strafe inside the ring
+                if not keep:
+                    if dd > 2.5:
+                        mv = self.go(d_["pos"][0], d_["pos"][1], me, t)
+                        boost = me["energy"] > 50 and dd > 25
+                    else:
+                        mv = (0.0, 0.0)
                 mode = "drop"
                 if dd < d_.get("radius", 8) and d_["lands_in"] <= 0:
                     self.ring_t += 0.1
