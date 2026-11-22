@@ -107,6 +107,8 @@ LGUN_AIM = _env("MR_LGUNAIM", 0.0)         # keep the gun's lead aim (so the gun
 NO_CLEAR = _env("MR_NOCLEAR", 0.0) > 0     # shoot at a target we can see without our own (coarse) check of the line to the lead point
 SPIN = _env("MR_SPIN", 0.0)                # with nothing in sight, turn the torso all the way round at this rate (rad/s) instead of sweeping
 ZAP_EXTRA = _env("MR_ZAPEXTRA", 8.0)       # energy kept in reserve when firing lightning
+SNACK_R = _env("MR_SNACKR", 70.0)          # how far we will walk to a cube in the middle of a fight (halved when hurt)
+CUBE_CAP = _env("MR_CUBECAP", 0.0)         # cubes stop adding health and damage at 10: beyond this count only take ones within 30 m (0 = no limit)
 STOP_K = _env("MR_STOPK", 0.0)              # diagnostic builds only: stand still after this many kills (the score then shows how often we reach it)
 PROBE = _env("MR_PROBE", 0.0)              # diagnostic builds only: stand still once this share of our gun shots was not carried out (late answers)
 SALT_MAP = os.environ.get("MR_SALTMAP", "")   # "modulus:residue:salt,..." overrides of the reshuffle for groups of spawn points
@@ -588,6 +590,9 @@ class Bot:
         cube = min(cubes, key=lambda c: math.hypot(c[0] - x, c[1] - y), default=None)
         cube_d = math.hypot(cube[0] - x, cube[1] - y) if cube else 1e9
         armed = max(ranks) >= ARMED_MIN  # a laser or lightning; a mortar alone does not count
+        snack_r = SNACK_R if hp_frac > 0.5 else SNACK_R * 0.5
+        if CUBE_CAP and me["cubes"] >= CUBE_CAP:
+            snack_r = min(snack_r, 30.0)
         if must_move:
             mv = self.zone_dir(obs, me)
             boost = not me["in_zone"] and me["energy"] > 5
@@ -658,10 +663,10 @@ class Bot:
                 if want and want[4] < (GRAB if (not armed or (LASER_PULL and want[2] == "laser")) else 35.0):
                     mv = self.go(want[3][0], want[3][1], me, t)
                     mode = "grab"
-                elif cube and cube_d < (70.0 if hp_frac > 0.5 else 35.0):
+                elif cube and cube_d < snack_r:
                     mv = self.go(cube[0], cube[1], me, t)
                     mode = "snack"
-            elif CUBE_MELEE and not survive and cube and cube_d < (70.0 if hp_frac > 0.5 else 40.0):
+            elif CUBE_MELEE and not survive and cube and cube_d < snack_r:
                 mv = self.go(cube[0], cube[1], me, t)      # cubes are health, damage and the upgrade clock: take them mid-brawl too
                 mode = "snack"
         elif t - self.threat_t < 3.0 and self.threat_bearing is not None:
